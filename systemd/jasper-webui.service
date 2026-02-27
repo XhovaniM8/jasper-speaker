@@ -1,0 +1,17 @@
+[Unit]
+Description=Jasper Speaker Web Dashboard
+After=squeezelite.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/jasper-speaker/webui
+ExecStart=/home/pi/jasper-speaker/webui/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

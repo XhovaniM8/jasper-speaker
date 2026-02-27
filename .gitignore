@@ -12,3 +12,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Web UI
+webui/__pycache__/
+webui/.venv/

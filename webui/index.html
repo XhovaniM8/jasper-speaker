@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jasper Speaker Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --blue: #58a6ff;
+    --orange: #f0883e;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ---- Layout ---- */
+  .container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+  header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+  header h1 span { color: var(--blue); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--card);
+  }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .badge.ok .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .badge.warn .dot { background: var(--yellow); }
+  .badge.err .dot { background: var(--red); }
+
+  #clock { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  /* ---- Grid ---- */
+  .row { display: grid; gap: 16px; margin-bottom: 16px; }
+  .services-row { grid-template-columns: repeat(5, 1fr); }
+  .two-col { grid-template-columns: 1fr 1fr; }
+
+  @media (max-width: 900px) {
+    .services-row { grid-template-columns: repeat(3, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    .services-row { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ---- Card ---- */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  /* ---- Service cards ---- */
+  .svc-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .svc-header { display: flex; align-items: center; gap: 8px; }
+  .svc-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted); flex-shrink: 0;
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .svc-dot.active { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .svc-dot.running { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .svc-dot.failed { background: var(--red); }
+  .svc-dot.inactive { background: var(--muted); }
+  .svc-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .svc-status { font-size: 11px; color: var(--muted); }
+  .svc-restart {
+    margin-top: 4px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 11px;
+    transition: border-color 0.2s, color 0.2s;
+    align-self: flex-start;
+  }
+  .svc-restart:hover { border-color: var(--blue); color: var(--blue); }
+
+  /* ---- ALSA + Config info ---- */
+  .info-table { width: 100%; border-collapse: collapse; }
+  .info-table td { padding: 4px 8px 4px 0; vertical-align: top; }
+  .info-table td:first-child { color: var(--muted); white-space: nowrap; width: 120px; }
+  .info-table td:last-child { color: var(--text); font-family: monospace; }
+
+  .alsa-list { list-style: none; }
+  .alsa-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .alsa-list li:last-child { border-bottom: none; }
+  .alsa-idx {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 4px;
+    background: #21262d; color: var(--muted); font-size: 11px; font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  /* ---- Signal meters ---- */
+  .meters-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .meter-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .meter-bar-wrap {
+    height: 12px; border-radius: 3px; background: #21262d;
+    overflow: hidden; position: relative; margin-bottom: 4px;
+  }
+  .meter-bar {
+    height: 100%; width: 0%;
+    border-radius: 3px;
+    background: linear-gradient(to right, var(--green) 0%, var(--yellow) 70%, var(--red) 90%);
+    transition: width 80ms linear;
+  }
+  .meter-db { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  .ws-badge { margin-top: 16px; }
+
+  /* ---- Chart ---- */
+  .chart-wrap { position: relative; height: 300px; }
+
+  /* ---- Test console ---- */
+  .console-toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .btn {
+    padding: 6px 14px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
+  }
+  .btn-primary { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+  .btn-primary:hover { background: #388bfd; border-color: #388bfd; }
+  .btn-secondary { background: transparent; color: var(--text); }
+  .btn-secondary:hover { border-color: var(--blue); color: var(--blue); }
+  .btn-danger { background: transparent; color: var(--muted); }
+  .btn-danger:hover { border-color: var(--red); color: var(--red); }
+
+  .console-out {
+    background: #010409;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    height: 240px;
+    overflow-y: auto;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .console-out .pass { color: var(--green); }
+  .console-out .fail { color: var(--red); }
+  .console-out .done { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <h1>Jasper <span>Speaker</span> Dashboard</h1>
+    <div class="header-right">
+      <div id="sys-badge" class="badge">
+        <span class="dot"></span>
+        <span id="sys-badge-text">Checking...</span>
+      </div>
+      <div id="clock"></div>
+    </div>
+  </header>
+
+  <!-- Services row -->
+  <div class="row services-row" id="services-row">
+    <!-- Populated by JS -->
+  </div>
+
+  <!-- Two-column: info + meters -->
+  <div class="row two-col">
+
+    <!-- Left: ALSA + CamillaDSP config -->
+    <div class="card">
+      <div class="card-title">ALSA Devices</div>
+      <ul class="alsa-list" id="alsa-list">
+        <li><span style="color:var(--muted)">Loading...</span></li>
+      </ul>
+      <div style="margin-top:16px">
+        <div class="card-title">CamillaDSP Config</div>
+        <table class="info-table" id="cdsp-info">
+          <tr><td>Sample rate</td><td id="cfg-sr">—</td></tr>
+          <tr><td>Crossover</td><td id="cfg-xo">—</td></tr>
+          <tr><td>Filter type</td><td id="cfg-ft">—</td></tr>
+          <tr><td>Capture</td><td id="cfg-cap">—</td></tr>
+          <tr><td>Playback</td><td id="cfg-play">—</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Right: meters -->
+    <div class="card">
+      <div class="card-title">Signal Levels</div>
+      <div class="meters-grid">
+        <div>
+          <div class="meter-label">Woofer L</div>
+          <div class="meter-bar-wrap"><div class="meter-bar" id="m-wl"></div></div>
+          <div class="meter-db" id="db-wl">— dB</div>
+        </div>
+        <div>
+          <div class="meter-label">Woofer R</div>
+          <div class="meter-bar-wrap"><div class="meter-bar" id="m-wr"></div></div>
+          <div class="meter-db" id="db-wr">— dB</div>
+        </div>
+        <div>
+          <div class="meter-label">Tweeter L</div>
+          <div class="meter-bar-wrap"><div class="meter-bar" id="m-tl"></div></div>
+          <div class="meter-db" id="db-tl">— dB</div>
+        </div>
+        <div>
+          <div class="meter-label">Tweeter R</div>
+          <div class="meter-bar-wrap"><div class="meter-bar" id="m-tr"></div></div>
+          <div class="meter-db" id="db-tr">— dB</div>
+        </div>
+      </div>
+      <div class="ws-badge">
+        <span id="ws-badge" class="badge err">
+          <span class="dot"></span>
+          <span id="ws-badge-text">WS Disconnected</span>
+        </span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Crossover chart -->
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Crossover Filter Response</div>
+    <div class="chart-wrap">
+      <canvas id="xo-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- Test console -->
+  <div class="card">
+    <div class="card-title">Test Console</div>
+    <div class="console-toolbar">
+      <button class="btn btn-primary" id="btn-test">Run Full Test</button>
+      <button class="btn btn-secondary" id="btn-tone">&#9834; 1 kHz Tone</button>
+      <button class="btn btn-danger" id="btn-stop">&#9632; Stop Tone</button>
+    </div>
+    <pre class="console-out" id="console-out">Ready. Click "Run Full Test" to begin.</pre>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ============================================================
+// Config / constants
+// ============================================================
+const SVC_NAMES = [
+  "alsa-loopback",
+  "camilladsp",
+  "squeezelite",
+  "music-assistant",
+  "home-assistant",
+];
+const METER_IDS = [
+  { bar: "m-wl", db: "db-wl" },  // ch 0 — Woofer L
+  { bar: "m-wr", db: "db-wr" },  // ch 1 — Woofer R
+  { bar: "m-tl", db: "db-tl" },  // ch 2 — Tweeter L
+  { bar: "m-tr", db: "db-tr" },  // ch 3 — Tweeter R
+];
+
+// ============================================================
+// Clock
+// ============================================================
+function tickClock() {
+  const now = new Date();
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// ============================================================
+// Service cards — build DOM once
+// ============================================================
+(function buildServiceCards() {
+  const row = document.getElementById("services-row");
+  for (const svc of SVC_NAMES) {
+    const card = document.createElement("div");
+    card.className = "card svc-card";
+    card.innerHTML = `
+      <div class="svc-header">
+        <div class="svc-dot" id="dot-${svc}"></div>
+        <div class="svc-name">${svc}</div>
+      </div>
+      <div class="svc-status" id="status-${svc}">—</div>
+      <button class="svc-restart" data-svc="${svc}">↺ Restart</button>
+    `;
+    row.appendChild(card);
+  }
+
+  row.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".svc-restart");
+    if (!btn) return;
+    const svc = btn.dataset.svc;
+    btn.disabled = true;
+    btn.textContent = "…";
+    try {
+      await fetch(`/api/services/${encodeURIComponent(svc)}/restart`, { method: "POST" });
+    } catch (_) {}
+    btn.disabled = false;
+    btn.textContent = "↺ Restart";
+    await fetchStatus();
+  });
+})();
+
+// ============================================================
+// Status polling
+// ============================================================
+const STATUS_OK = new Set(["active", "running"]);
+
+async function fetchStatus() {
+  try {
+    const data = await (await fetch("/api/status")).json();
+    let allOk = true;
+    for (const svc of SVC_NAMES) {
+      const state = data[svc] ?? "unknown";
+      const dot = document.getElementById(`dot-${svc}`);
+      const label = document.getElementById(`status-${svc}`);
+      dot.className = "svc-dot " + (STATUS_OK.has(state) ? state : state === "failed" ? "failed" : "inactive");
+      label.textContent = state;
+      if (!STATUS_OK.has(state)) allOk = false;
+    }
+    const badge = document.getElementById("sys-badge");
+    const badgeText = document.getElementById("sys-badge-text");
+    badge.className = "badge " + (allOk ? "ok" : "warn");
+    badgeText.textContent = allOk ? "All systems up" : "Degraded";
+  } catch (_) {
+    document.getElementById("sys-badge").className = "badge err";
+    document.getElementById("sys-badge-text").textContent = "Unreachable";
+  }
+}
+
+fetchStatus();
+setInterval(fetchStatus, 5000);
+
+// ============================================================
+// ALSA list
+// ============================================================
+async function fetchAlsa() {
+  try {
+    const { cards } = await (await fetch("/api/alsa")).json();
+    const ul = document.getElementById("alsa-list");
+    if (!cards || cards.length === 0) {
+      ul.innerHTML = "<li><span style='color:var(--muted)'>No cards found</span></li>";
+      return;
+    }
+    ul.innerHTML = cards.map(c =>
+      `<li><span class="alsa-idx">${c.index}</span><span>${c.name} <span style="color:var(--muted);font-size:11px">(${c.id})</span></span></li>`
+    ).join("");
+  } catch (_) {
+    document.getElementById("alsa-list").innerHTML = "<li><span style='color:var(--red)'>Error loading ALSA</span></li>";
+  }
+}
+
+// ============================================================
+// CamillaDSP config info
+// ============================================================
+let crossoverFreq = 2500;
+
+async function fetchCdspConfig() {
+  try {
+    const d = await (await fetch("/api/cdsp/config")).json();
+    document.getElementById("cfg-sr").textContent = d.samplerate ? `${d.samplerate} Hz` : "—";
+    document.getElementById("cfg-xo").textContent = d.crossover_freq ? `${d.crossover_freq} Hz` : "—";
+    document.getElementById("cfg-ft").textContent =
+      d.filter_type ? `${d.filter_type} order ${d.filter_order}` : "—";
+    document.getElementById("cfg-cap").textContent = d.capture_device ?? "—";
+    document.getElementById("cfg-play").textContent = d.playback_device ?? "—";
+    if (d.crossover_freq) {
+      crossoverFreq = d.crossover_freq;
+      buildChart(crossoverFreq);
+    }
+  } catch (_) {}
+}
+
+fetchAlsa();
+fetchCdspConfig();
+
+// ============================================================
+// Crossover chart
+// ============================================================
+function lrLowpass(f, fc, order) {
+  // LR = BW^2, so LR4 = (BW2)^2 => magnitude^2 = 1/(1+(f/fc)^order)
+  const x = Math.pow(f / fc, order);
+  return 20 * Math.log10(1 / (1 + x));
+}
+function lrHighpass(f, fc, order) {
+  const x = Math.pow(f / fc, order);
+  return 20 * Math.log10(x / (1 + x));
+}
+
+function logRange(start, end, n) {
+  const result = [];
+  const logStart = Math.log10(start);
+  const logEnd = Math.log10(end);
+  for (let i = 0; i < n; i++) {
+    result.push(Math.pow(10, logStart + (i / (n - 1)) * (logEnd - logStart)));
+  }
+  return result;
+}
+
+let xoChart = null;
+
+function buildChart(fc = 2500) {
+  const freqs = logRange(20, 20000, 300);
+  const lpData = freqs.map(f => ({ x: f, y: lrLowpass(f, fc, 4) }));
+  const hpData = freqs.map(f => ({ x: f, y: lrHighpass(f, fc, 4) }));
+
+  if (xoChart) xoChart.destroy();
+
+  const ctx = document.getElementById("xo-chart").getContext("2d");
+  xoChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      datasets: [
+        {
+          label: "Woofer LP (LR4)",
+          data: lpData,
+          borderColor: "#58a6ff",
+          backgroundColor: "transparent",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0,
+        },
+        {
+          label: "Tweeter HP (LR4)",
+          data: hpData,
+          borderColor: "#f0883e",
+          backgroundColor: "transparent",
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0,
+        },
+      ],
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          type: "logarithmic",
+          min: 20,
+          max: 20000,
+          title: { display: true, text: "Frequency (Hz)", color: "#8b949e" },
+          ticks: {
+            color: "#8b949e",
+            callback: (v) => {
+              const labels = { 20: "20", 100: "100", 1000: "1k", 10000: "10k", 20000: "20k" };
+              return labels[v] ?? (Number.isInteger(Math.log10(v)) ? v : undefined);
+            },
+          },
+          grid: { color: "#21262d" },
+        },
+        y: {
+          min: -60,
+          max: 5,
+          title: { display: true, text: "Amplitude (dB)", color: "#8b949e" },
+          ticks: { color: "#8b949e" },
+          grid: { color: "#21262d" },
+        },
+      },
+      plugins: {
+        legend: { labels: { color: "#e6edf3", boxWidth: 16 } },
+        annotation: {
+          annotations: {
+            xoLine: {
+              type: "line",
+              scaleID: "x",
+              value: fc,
+              borderColor: "#8b949e",
+              borderWidth: 1,
+              borderDash: [5, 5],
+              label: {
+                display: true,
+                content: `${fc} Hz`,
+                color: "#8b949e",
+                backgroundColor: "#161b22",
+                font: { size: 11 },
+                position: "start",
+              },
+            },
+            m6dBLine: {
+              type: "line",
+              scaleID: "y",
+              value: -6,
+              borderColor: "#8b949e",
+              borderWidth: 1,
+              borderDash: [3, 3],
+              label: {
+                display: true,
+                content: "−6 dB",
+                color: "#8b949e",
+                backgroundColor: "#161b22",
+                font: { size: 11 },
+                position: "end",
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+buildChart(2500);
+
+// ============================================================
+// CamillaDSP WebSocket — signal meters
+// ============================================================
+let cdspWs = null;
+let cdspPollTimer = null;
+
+const DB_FLOOR = -60;
+
+function dbToPercent(db) {
+  if (db === null || db === undefined || !isFinite(db)) return 0;
+  const clamped = Math.max(DB_FLOOR, Math.min(0, db));
+  return ((clamped - DB_FLOOR) / (0 - DB_FLOOR)) * 100;
+}
+
+function updateMeter(idx, db) {
+  const ids = METER_IDS[idx];
+  if (!ids) return;
+  document.getElementById(ids.bar).style.width = dbToPercent(db) + "%";
+  document.getElementById(ids.db).textContent =
+    db !== null && isFinite(db) ? `${db.toFixed(1)} dB` : "— dB";
+}
+
+function setWsBadge(connected) {
+  const badge = document.getElementById("ws-badge");
+  const text = document.getElementById("ws-badge-text");
+  badge.className = "badge " + (connected ? "ok" : "err");
+  text.textContent = connected ? "WS Connected" : "WS Disconnected";
+}
+
+function connectCdspWs() {
+  if (cdspWs && cdspWs.readyState <= 1) return; // already open/connecting
+
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  cdspWs = new WebSocket(`${proto}//${location.host}/ws/cdsp`);
+
+  cdspWs.onopen = () => {
+    setWsBadge(true);
+    // Start polling for peak levels
+    cdspPollTimer = setInterval(() => {
+      if (cdspWs.readyState === WebSocket.OPEN) {
+        cdspWs.send(JSON.stringify({ GetPlaybackSignalPeak: null }));
+      }
+    }, 100);
+  };
+
+  cdspWs.onmessage = (evt) => {
+    try {
+      const msg = JSON.parse(evt.data);
+      // Response shape: { "GetPlaybackSignalPeak": [peak_db_ch0, peak_db_ch1, ...] }
+      const peaks = msg.GetPlaybackSignalPeak;
+      if (Array.isArray(peaks)) {
+        for (let i = 0; i < 4; i++) {
+          updateMeter(i, peaks[i] ?? null);
+        }
+      }
+    } catch (_) {}
+  };
+
+  cdspWs.onclose = () => {
+    setWsBadge(false);
+    clearInterval(cdspPollTimer);
+    // Retry after 3s
+    setTimeout(connectCdspWs, 3000);
+  };
+
+  cdspWs.onerror = () => {
+    cdspWs.close();
+  };
+}
+
+connectCdspWs();
+
+// ============================================================
+// Test console — SSE
+// ============================================================
+let testSource = null;
+
+document.getElementById("btn-test").addEventListener("click", () => {
+  const out = document.getElementById("console-out");
+  out.textContent = "";
+
+  if (testSource) {
+    testSource.close();
+    testSource = null;
+  }
+
+  testSource = new EventSource("/api/test/run");
+  testSource.onmessage = (e) => {
+    const line = e.data;
+    if (line === "[done]") {
+      testSource.close();
+      testSource = null;
+      const span = document.createElement("span");
+      span.className = "done";
+      span.textContent = "\n[test complete]";
+      out.appendChild(span);
+      out.scrollTop = out.scrollHeight;
+      return;
+    }
+    const span = document.createElement("span");
+    const upper = line.toUpperCase();
+    if (upper.includes("PASS") || upper.includes("OK") || upper.startsWith("✓")) {
+      span.className = "pass";
+    } else if (upper.includes("FAIL") || upper.includes("ERROR") || upper.startsWith("✗")) {
+      span.className = "fail";
+    }
+    span.textContent = line + "\n";
+    out.appendChild(span);
+    out.scrollTop = out.scrollHeight;
+  };
+  testSource.onerror = () => {
+    if (testSource) { testSource.close(); testSource = null; }
+    const span = document.createElement("span");
+    span.className = "fail";
+    span.textContent = "\n[connection error]";
+    out.appendChild(span);
+  };
+});
+
+// ============================================================
+// Tone controls
+// ============================================================
+document.getElementById("btn-tone").addEventListener("click", async () => {
+  try {
+    await fetch("/api/tone/start?freq=1000", { method: "POST" });
+    document.getElementById("console-out").textContent = "1 kHz test tone playing on hw:Loopback,0 …";
+  } catch (_) {}
+});
+
+document.getElementById("btn-stop").addEventListener("click", async () => {
+  try {
+    await fetch("/api/tone/stop", { method: "POST" });
+    document.getElementById("console-out").textContent = "Tone stopped.";
+  } catch (_) {}
+});
+</script>
+</body>
+</html>
