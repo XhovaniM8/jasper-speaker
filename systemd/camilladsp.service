@@ -1,0 +1,22 @@
+[Unit]
+Description=CamillaDSP Audio Pipeline
+After=alsa-loopback.service sound.target
+Requires=alsa-loopback.service
+
+[Service]
+User=pi
+Group=audio
+ExecStart=/usr/local/bin/camilladsp /home/pi/jasper-speaker/audio/camilla_config.yml \
+    --port 1234 \
+    --address 0.0.0.0
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Real-time priority for audio
+LimitRTPRIO=99
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=multi-user.target

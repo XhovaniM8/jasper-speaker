@@ -1,0 +1,14 @@
+[Unit]
+Description=ALSA Loopback Module
+DefaultDependencies=no
+Before=sound.target
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/modprobe snd-aloop pcm_substreams=2
+ExecStop=/sbin/modprobe -r snd-aloop
+
+[Install]
+WantedBy=sysinit.target
