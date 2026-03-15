@@ -1,25 +1,13 @@
 [Unit]
-Description=Squeezelite LMS Player
-After=camilladsp.service network-online.target
+Description=Squeezelite
+After=camilladsp.service
 Requires=camilladsp.service
-Wants=network-online.target
 
 [Service]
-User=pi
-Group=audio
-# -o: output to ALSA loopback write side
-# -n: player name shown in Music Assistant
-# -r: sample rates to advertise
-# -C: close ALSA device after N seconds of silence
-ExecStart=/usr/bin/squeezelite \
-    -o hw:Loopback,0 \
-    -n "Jasper" \
-    -r "48000" \
-    -C 5
-Restart=on-failure
+User=jaspertech
+ExecStart=/usr/bin/squeezelite -o hw:0,0 -n "Jasper"
+Restart=always
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

@@ -1,37 +1,10 @@
 services:
-
-  # ----------------------------------------------------------------
-  # Music Assistant — Spotify Connect, AirPlay 2, local library
-  # Web UI: http://jasper.local:8095
-  # ----------------------------------------------------------------
   music-assistant:
     image: ghcr.io/music-assistant/server:latest
     container_name: music-assistant
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ma_data:/data
+      - /home/jaspertech/music-assistant:/data
     environment:
-      - TZ=${TZ:-America/New_York}
-    privileged: false
-    devices: []
-
-  # ----------------------------------------------------------------
-  # Home Assistant — voice pipeline + CamillaDSP integration
-  # Web UI: http://jasper.local:8123
-  # ----------------------------------------------------------------
-  home-assistant:
-    image: ghcr.io/home-assistant/home-assistant:stable
-    container_name: home-assistant
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ha_config:/config
-      - /etc/localtime:/etc/localtime:ro
-    environment:
-      - TZ=${TZ:-America/New_York}
-    privileged: true   # required for USB device access (Voice PE)
-
-volumes:
-  ma_data:
-  ha_config:
+      - TZ=America/New_York

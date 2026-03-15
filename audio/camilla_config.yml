@@ -1,119 +1,72 @@
----
-# CamillaDSP Pipeline Config — jasper-speaker
-# 2-in → 8-out (4 active channels: woofer L/R + tweeter L/R)
-# Crossover: 2500 Hz Linkwitz-Riley 4th order
-# Hardware: HiFiBerry DAC8x (hw:sndrpihifiberry)
-
 devices:
-  samplerate: 48000
+  samplerate: 44100
   chunksize: 1024
-  queuelimit: 4
-  silence_threshold: -60
-  silence_timeout: 3.0
-
+  enable_rate_adjust: true
   capture:
     type: Alsa
     channels: 2
-    device: "hw:Loopback,1"
-    format: S32LE
-
+    device: "hw:0,1"
+    format: S16LE
   playback:
     type: Alsa
     channels: 8
-    device: "hw:sndrpihifiberry"
+    device: "hw:1,0"
     format: S32LE
 
-# ---------------------------------------------------------
-# Filters
-# ---------------------------------------------------------
 filters:
-
-  # Woofer low-pass (channels 0 & 1)
-  lp_woofer_L:
-    type: BiquadCombo
+  gain:
+    type: Gain
     parameters:
-      type: LinkwitzRileyLowpass
-      freq: 2500
-      order: 4
+      gain: 0
+      inverted: false
 
-  lp_woofer_R:
-    type: BiquadCombo
-    parameters:
-      type: LinkwitzRileyLowpass
-      freq: 2500
-      order: 4
-
-  # Tweeter high-pass (channels 2 & 3)
-  hp_tweeter_L:
-    type: BiquadCombo
-    parameters:
-      type: LinkwitzRileyHighpass
-      freq: 2500
-      order: 4
-
-  hp_tweeter_R:
-    type: BiquadCombo
-    parameters:
-      type: LinkwitzRileyHighpass
-      freq: 2500
-      order: 4
-
-# ---------------------------------------------------------
-# Mixers
-# ---------------------------------------------------------
 mixers:
-
-  # Duplicate stereo input to 4 output channels (8ch DAC, 4 active)
-  stereo_to_4ch:
+  stereo_to_8ch:
     channels:
       in: 2
       out: 8
     mapping:
-      - dest: 0          # Left woofer
+      - dest: 0
         sources:
           - channel: 0
             gain: 0
-            inverted: false
-      - dest: 1          # Right woofer
+      - dest: 1
         sources:
           - channel: 1
             gain: 0
-            inverted: false
-      - dest: 2          # Left tweeter
+      - dest: 2
         sources:
           - channel: 0
             gain: 0
-            inverted: false
-      - dest: 3          # Right tweeter
+      - dest: 3
         sources:
           - channel: 1
             gain: 0
-            inverted: false
-      # Channels 4–7 unused (silent)
+      - dest: 4
+        sources:
+          - channel: 0
+            gain: 0
+      - dest: 5
+        sources:
+          - channel: 1
+            gain: 0
+      - dest: 6
+        sources:
+          - channel: 0
+            gain: 0
+      - dest: 7
+        sources:
+          - channel: 1
+            gain: 0
 
-# ---------------------------------------------------------
-# Pipeline
-# ---------------------------------------------------------
 pipeline:
   - type: Mixer
-    name: stereo_to_4ch
-
+    name: stereo_to_8ch
   - type: Filter
     channel: 0
     names:
-      - lp_woofer_L
-
+      - gain
   - type: Filter
     channel: 1
     names:
-      - lp_woofer_R
-
-  - type: Filter
-    channel: 2
-    names:
-      - hp_tweeter_L
-
-  - type: Filter
-    channel: 3
-    names:
-      - hp_tweeter_R
+      - gain
