@@ -52,22 +52,21 @@ See `docs/architecture.md` for full signal flow.
 ## Signal Flow
 
 ```
-[Spotify / AirPlay / Local Library]
+Spotify / AirPlay / Local Library
           ↓
-    Music Assistant
+Music Assistant
           ↓
-     Squeezelite
+Squeezelite
           ↓
-   ALSA Loopback Device
+ALSA Loopback Device
           ↓
-     CamillaDSP  ← voice/notifications also enter here
-   (crossover + EQ)
+CamillaDSP ← voice/notifications also enter here (crossover + EQ)
           ↓
-    HiFiBerry DAC8x
+HiFiBerry DAC8x
           ↓
-   TPA3255 Amp (4-ch)
+TPA3255 Amp (4-ch)
           ↓
-       Speakers
+Speakers
 ```
 
 ---
