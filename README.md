@@ -22,10 +22,10 @@ Everything passes through the DSP chain before hitting the speakers.
 
 | Component              | Qty | Notes                      |
 | ---------------------- | --- | -------------------------- |
-| Raspberry Pi 5 (8GB)   | 3   | Main compute               |
-| HiFiBerry DAC8x        | 3   | 8-ch PCM5242, balanced out |
-| TPA3255 4-ch Amp Board | 3   | Powers full-range drivers  |
-| HA Voice PE            | 3   | Mic input + wake word      |
+| Raspberry Pi 5 (8GB)   | 1   | Main compute               |
+| HiFiBerry DAC8x        | 1   | 8-ch PCM5242, balanced out |
+| TPA3255 4-ch Amp Board | 1   | Powers full-range drivers  |
+| HA Voice PE            | 1   | Mic input + wake word      |
 
 ---
 
