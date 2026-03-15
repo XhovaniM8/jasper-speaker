@@ -6,51 +6,51 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 
 ## M1 — Audio Pipeline Live
 
-**ETA:** ~1 week from kickoff | **Status:** 🔲 In Progress
+**ETA:** ~1 week from kickoff | **Status:** Complete
 
 ### Scope
 
-- [ ] Pi 5 boots, DAC8x recognized by ALSA (`aplay -l` shows HiFiBerry card)
-- [ ] HiFiBerry overlay added to `/boot/firmware/config.txt`
-- [ ] ALSA loopback device configured
-- [ ] CamillaDSP installed and running natively
-- [ ] Basic 4-channel crossover config in CamillaDSP
-- [ ] Squeezelite → ALSA loopback → CamillaDSP → DAC8x chain passes audio
-- [ ] Music plays through test speaker
-- [ ] Verified with `aplay` + `arecord` loopback test
+- [x] Pi 5 boots, DAC8x recognized by ALSA (`aplay -l` shows HiFiBerry card)
+- [x] HiFiBerry overlay added to `/boot/firmware/config.txt`
+- [x] ALSA loopback device configured
+- [x] CamillaDSP installed and running natively
+- [x] Stereo to 8-channel upmix config in CamillaDSP
+- [x] Squeezelite → ALSA loopback → CamillaDSP → DAC8x chain passes audio
+- [x] Music plays through test speaker (Dayton Audio DS90-8)
+- [x] Verified with `speaker-test` and live audio playback
 
 ### Deliverable
 
-- Screen recording: `aplay -l` output + music playing through test speaker
 - CamillaDSP config committed to repo (`audio/camilla_config.yml`)
 
-### Demo
+### Notes
 
-<!-- Loom link here -->
+- DAC8x requires 8-channel output — stereo upmix mixer added to CamillaDSP pipeline
+- DIFF mode jumpers on TPA3255 required for full balanced signal level
+- Card numbering changes on reboot — loopback loaded via `/etc/modules`
 
 ---
 
 ## M2 — Music Streaming Sources Working
 
-**ETA:** ~1 week after M1 | **Status:** 🔲 Not Started
+**ETA:** ~1 week after M1 | **Status:** Complete
 
 ### Scope
 
-- [ ] Music Assistant running in Docker
-- [ ] Spotify Connect source configured and working
-- [ ] AirPlay 2 source configured and working
-- [ ] Local library source configured
-- [ ] All sources feed into Squeezelite → DSP chain
-- [ ] Volume control works across sources
+- [x] Music Assistant running in Docker
+- [x] Spotify Connect source configured and working
+- [x] AirPlay 2 source configured and working
+- [x] All sources feed into Squeezelite → DSP chain
+- [x] Volume control works across sources
 
 ### Deliverable
 
-- Demo video: Spotify and AirPlay handoff between sources
 - `docker/docker-compose.yml` committed to repo
 
-### Demo
+### Notes
 
-<!-- Loom link here -->
+- Squeezelite runs at 44100Hz 2ch into loopback, CamillaDSP handles upmix to 8ch
+- systemd services created for camilladsp and squeezelite with auto-restart
 
 ---
 
