@@ -56,17 +56,21 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 
 ## M3 — Voice Control + Ducking
 
-**ETA:** ~1.5 weeks after M2 | **Status:** 🔲 Not Started
+**ETA:** ~1.5 weeks after M2 | **Status:**  In Progress
 
 ### Scope
 
-- [ ] Home Assistant running in Docker
-- [ ] Voice PE mic input configured in HA voice pipeline
-- [ ] OpenAI conversation agent connected
-- [ ] "Jarvis" wake word triggers response
+- [x] Home Assistant running in Docker
+- [x] Claude (Anthropic Haiku) conversation agent connected
+- [x] Faster Whisper (STT) running via Wyoming protocol in Docker
+- [x] Piper (TTS) running via Wyoming protocol in Docker
+- [x] JasperVoice pipeline configured in HA Assist
+- [x] Text commands working end to end through Claude
+- [ ] Voice PE mic plugged into Pi and auto-discovered in HA
+- [ ] Wake word configured and triggering pipeline
 - [ ] Audio ducking: music lowers when assistant speaks, resumes after
 - [ ] CamillaDSP HA integration installed
-- [ ] Voice-controlled volume and EQ profile switching
+- [ ] Voice-controlled volume and EQ profile switchingg
 
 ### Deliverable
 
@@ -80,7 +84,7 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 
 ## M4 — System Reliability & Appliance Mode
 
-**ETA:** ~0.5 week after M3 | **Status:** 🔲 Not Started
+**ETA:** ~0.5 week after M3 | **Status:** Not Started
 
 ### Scope
 

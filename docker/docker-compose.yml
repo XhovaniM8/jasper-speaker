@@ -8,3 +8,32 @@ services:
       - /home/jaspertech/music-assistant:/data
     environment:
       - TZ=America/New_York
+
+  faster-whisper:
+    image: lscr.io/linuxserver/faster-whisper:latest
+    container_name: faster-whisper
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - WHISPER_MODEL=tiny-int8
+      - WHISPER_LANG=en
+    volumes:
+      - /home/jaspertech/whisper:/config
+    ports:
+      - 10300:10300
+
+  piper:
+    image: lscr.io/linuxserver/piper:latest
+    container_name: piper
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - PIPER_VOICE=en_US-lessac-medium
+    volumes:
+      - /home/jaspertech/piper:/config
+    ports:
+      - 10200:10200
