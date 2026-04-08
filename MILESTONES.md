@@ -59,14 +59,12 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - [ ] Conversation agent handles knowledge questions well (not just smart-home commands)
 
 #### TTS voice quality
-- [ ] Evaluate Gemini API as conversation agent for better voice quality
-- [ ] Compare Piper vs Google Cloud TTS output quality
-- [ ] Select and configure final TTS voice
+- [ ] Evaluate Piper voice options and select best available voice
+- [ ] If Piper quality is insufficient, revisit Gemini/Google TTS as a future option
 
 #### Audio ducking
 - [ ] Music lowers when assistant speaks, resumes after
 - [ ] CamillaDSP HA integration installed
-- [ ] Voice-controlled EQ profile switching (stretch)
 
 ### Deliverable
 - Video demo: voice command → Spotify control + Q&A response → music resumes
@@ -74,7 +72,7 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 <!-- Loom link here -->
 ### Notes
 - Jasper's primary use case: control Spotify playback + ask general knowledge questions via voice
-- Voice quality matters — explore Google/Gemini TTS as alternative to Piper
+- Per Jasper's direction: stick with existing HA audio pipelines (Piper) for now; live voice API / Gemini TTS is deferred unless Piper quality is a dealbreaker
 - Jasper also runs HA on a separate Pi for Zigbee home control (lights, blinds, fans); in theory this speaker could replace that Pi eventually, but not in scope now
 ---
 ## M3.5 — Room EQ / Correction
@@ -85,6 +83,7 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - [ ] Load filter into CamillaDSP config
 - [ ] A/B test corrected vs uncorrected output
 - [ ] Document measurement → filter → CamillaDSP workflow in `docs/`
+- [ ] Voice-controlled EQ profile switching (stretch)
 ### Deliverable
 - Correction filter committed to repo
 - `docs/room-eq.md` with end-to-end walkthrough
