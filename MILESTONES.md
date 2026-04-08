@@ -60,7 +60,7 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 
 #### TTS voice quality
 - [ ] Evaluate Piper voice options and select best available voice
-- [ ] If Piper quality is insufficient, revisit Gemini/Google TTS as a future option
+- [ ] If quality is insufficient, explore Gemini or Google Cloud TTS as alternatives
 
 #### Audio ducking
 - [ ] Music lowers when assistant speaks, resumes after
@@ -71,9 +71,9 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 ### Demo
 <!-- Loom link here -->
 ### Notes
-- Jasper's primary use case: control Spotify playback + ask general knowledge questions via voice
-- Per Jasper's direction: stick with existing HA audio pipelines (Piper) for now; live voice API / Gemini TTS is deferred unless Piper quality is a dealbreaker
-- Jasper also runs HA on a separate Pi for Zigbee home control (lights, blinds, fans); in theory this speaker could replace that Pi eventually, but not in scope now
+- Primary use cases: Spotify playback control + general knowledge Q&A via voice
+- Current approach: use existing HA Wyoming pipelines (Piper TTS) — external voice APIs (Gemini, Google Cloud TTS) deferred unless local TTS quality is insufficient
+- The Pi also runs Home Assistant for Zigbee home control (lights, blinds, fans); consolidating onto the speaker hardware is possible but out of scope
 ---
 ## M3.5 — Room EQ / Correction
 **ETA:** Anytime after M3 | **Status:** Not Started
@@ -89,9 +89,9 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - `docs/room-eq.md` with end-to-end walkthrough
 ### Notes
 - HouseCurve ($20/yr, phone mic) is the simpler path; REW (free, requires measurement mic) is more precise
-- Jasper acknowledged this is premature with a single test speaker on a table — goal is to learn the workflow now
+- Single test speaker on a table is not ideal for room correction — goal at this stage is to learn the measurement → filter → DSP workflow
 - CamillaDSP supports loading REW filters directly: https://github.com/HEnquist/camilladsp#using-filters-from-rew
-- Xhovani has access to measurement mics
+- Measurement mics are available
 ### Resources
 - HouseCurve auto-EQ docs: https://housecurve.com/docs/tuning/equalization#automatic-equalization
 - REW: https://www.roomeqwizard.com/
