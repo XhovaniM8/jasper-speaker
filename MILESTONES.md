@@ -47,11 +47,11 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 #### Voice hardware
 - [x] Voice PE mic plugged into Pi and auto-discovered in HA
 - [x] Wake word active — responds to "hello Nabu"
-- [ ] Custom wake word configured (e.g. "Hey Jasper")
+- [x] Custom wake word configured (e.g. "Hey Jasper")
 
 #### Conversation agent swap
-- [ ] Switch pipeline from default Nabu Casa agent to Claude (Haiku) or Gemini
-- [ ] Verify Q&A quality through voice end to end
+- [x] Switch pipeline from default Nabu Casa agent to Claude (Haiku) or Gemini
+- [x] Verify Q&A quality through voice end to end
 
 #### Spotify voice control
 - [ ] Play / pause Spotify via voice command
