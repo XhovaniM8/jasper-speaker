@@ -81,15 +81,7 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - Current approach: use existing HA Wyoming pipelines (Piper TTS) — external voice APIs (Gemini, Google Cloud TTS) deferred unless local TTS quality is insufficient
 - The Pi also runs Home Assistant for Zigbee home control (lights, blinds, fans); consolidating onto the speaker hardware is possible but out of scope
 ---
-## M3.5 — Room EQ / Correction
-**ETA:** Anytime after M3 | **Status:** Not Started
-### Scope
-- [ ] Take room measurement using HouseCurve (phone mic) or REW (studio mic)
-- [ ] Generate correction filter from measurement
-- [ ] Load filter into CamillaDSP config
-- [ ] A/B test corrected vs uncorrected output
-- [ ] Document measurement → filter → CamillaDSP workflow in `docs/`
-- [ ] Voice-controlled EQ profile switching (stretch)
+
 ### Deliverable
 - Correction filter committed to repo
 - `docs/room-eq.md` with end-to-end walkthrough
@@ -102,14 +94,7 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - HouseCurve auto-EQ docs: https://housecurve.com/docs/tuning/equalization#automatic-equalization
 - REW: https://www.roomeqwizard.com/
 ---
-## M4 — System Reliability & Appliance Mode
-**ETA:** ~0.5 week after M3 | **Status:** Not Started
-### Scope
-- [ ] Systemd service ordering: ALSA loopback → CamillaDSP → Squeezelite → Docker
-- [ ] Watchdog / auto-restart on crash for all services
-- [ ] Clean plug-in-and-play boot behavior
-- [ ] README finalized with full setup reproduction steps
-- [ ] All configs merged to `main`
+
 ### Deliverable
 - Boot-to-music timing demo (video)
 - Final repo with full docs merged to `main`
