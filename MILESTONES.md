@@ -60,8 +60,8 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - [ ] Request specific song or artist via voice (stretch)
 
 #### General Q&A via voice
-- [ ] Ask open-ended questions and get spoken answers (like a search engine)
-- [ ] Conversation agent handles knowledge questions well (not just smart-home commands)
+- [x] Ask open-ended questions and get spoken answers (like a search engine)
+- [x] Conversation agent handles knowledge questions well (not just smart-home commands)
 
 #### TTS voice quality
 - [ ] Evaluate Piper voice options and select best available voice
