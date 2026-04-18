@@ -313,6 +313,31 @@ async def api_ma_volume(req: VolumeRequest):
     return {"ok": True, "volume": req.level}
 
 
+@app.get("/api/ma/status")
+async def api_ma_status():
+    """Return current player + queue state for the Jasper player."""
+    try:
+        players = await _ma_command("players/all", {})
+        player = next((p for p in players if p.get("player_id") == MA_PLAYER_ID), None)
+        queue = await _ma_command("player_queues/get", {"queue_id": MA_PLAYER_ID})
+        current_item = queue.get("current_item") or {}
+        media = current_item.get("media_item") or {}
+        artists = media.get("artists") or []
+        artist_name = artists[0].get("name") if artists else media.get("artist", "")
+        return {
+            "state": player.get("state") if player else "unavailable",
+            "volume": round((player.get("volume_level") or 0)),
+            "title": media.get("name") or queue.get("display_name") or "",
+            "artist": artist_name,
+            "album": (media.get("album") or {}).get("name", ""),
+            "image": media.get("image", {}).get("path") if media.get("image") else None,
+            "shuffle": queue.get("shuffle_enabled", False),
+            "repeat": queue.get("repeat_mode", "off"),
+        }
+    except Exception as e:
+        return {"state": "unavailable", "error": str(e)}
+
+
 # ---------------------------------------------------------------------------
 # API: audio ducking (called by HA automations on TTS start/end)
 # ---------------------------------------------------------------------------
