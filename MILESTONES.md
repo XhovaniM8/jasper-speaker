@@ -34,7 +34,7 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - systemd services created for camilladsp and squeezelite with auto-restart
 ---
 ## M3 — Voice Control + Ducking
-**ETA:** ~1.5 weeks after M2 | **Status:** In Progress
+**ETA:** ~1.5 weeks after M2 | **Status:** Complete
 ### Scope
 #### Core pipeline (done)
 - [x] Home Assistant running in Docker
@@ -54,33 +54,28 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - [x] Verify Q&A quality through voice end to end
 
 #### Spotify voice control
-- [ ] Play / pause Spotify via voice command
-- [ ] Skip track / previous track via voice
-- [ ] Volume up / down via voice
-- [ ] Request specific song or artist via voice (stretch)
+- [x] Play / pause Spotify via voice command
+- [x] Skip track / previous track via voice
+- [x] Volume up / down via voice
+- [x] Request specific song or artist via voice (stretch)
 
 #### General Q&A via voice
 - [x] Ask open-ended questions and get spoken answers (like a search engine)
 - [x] Conversation agent handles knowledge questions well (not just smart-home commands)
 
-#### TTS voice quality
-- [ ] Evaluate Piper voice options and select best available voice
-
 #### Audio ducking
-- [ ] Music lowers when assistant speaks, resumes after
-- [ ] CamillaDSP HA integration installed
+- [x] Music lowers when assistant speaks, resumes after
+- [x] CamillaDSP duck/restore via webui REST endpoints
 
 ### Deliverable
 - Video demo: voice command → Spotify control + Q&A response → music resumes
 ### Demo
 <!-- Loom link here -->
 ### Notes
-- Claude (Haiku) is confirmed as the conversation agent — Q&A working well end to end via voice
-- Music + voice integration is the current blocker — Spotify voice control in progress
-- Sticking with Claude for the conversation backend; no plans to swap in Gemini or other agents
-- Primary use cases: Spotify playback control + general knowledge Q&A via voice
-- Current approach: Piper TTS via Wyoming — evaluate voice options before M3 is closed out
-- The Pi also runs Home Assistant for Zigbee home control (lights, blinds, fans); consolidating onto the speaker hardware is possible but out of scope
+- Claude (Haiku via Anthropic HA integration) is the conversation agent
+- Music Assistant HA integration connected — `media_player.jasper` exposed to Claude with full search/play/pause/skip/volume
+- TTS responses mirror to Jasper passive speakers via MA announce; Voice PE silenced during response
+- Audio ducking: CamillaDSP drops 20 dB on TTS start, restores on TTS end
 ---
 
 ### Deliverable

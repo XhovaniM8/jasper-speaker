@@ -1,6 +1,8 @@
-# Environment / secrets
+# Secrets / tokens — never commit these
 docker/.env
 *.env
+.ha_token
+.ma_token
 
 # OS
 .DS_Store
@@ -13,6 +15,7 @@ Thumbs.db
 # Logs
 *.log
 
-# Web UI
-webui/__pycache__/
+# Python
+__pycache__/
+*.pyc
 webui/.venv/

@@ -4,6 +4,7 @@ Serves on port 8080, proxies CamillaDSP WS, exposes system control endpoints.
 """
 
 import asyncio
+import json
 import os
 import re
 import subprocess
@@ -14,6 +15,7 @@ import yaml
 import websockets
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 from starlette.websockets import WebSocketState
 
 app = FastAPI(title="Jasper Speaker Dashboard")
@@ -38,8 +40,16 @@ DOCKER_CONTAINERS = {
 
 ALLOWED_ACTIONS = {"start", "stop", "restart"}
 
+MA_WS_URL = "ws://localhost:8095/ws"
+MA_TOKEN_PATH = REPO_DIR / ".ma_token"
+MA_PLAYER_ID = "00:00:00:00:00:00"  # squeezelite "Jasper"
+
 # Background tone subprocess
 _tone_proc: Optional[subprocess.Popen] = None
+
+# Volume saved before ducking
+_pre_duck_volume: Optional[float] = None
+DUCK_REDUCTION_DB = 20.0
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +219,138 @@ async def api_test_run():
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Music Assistant helpers
+# ---------------------------------------------------------------------------
+
+async def _ma_command(command: str, args: dict) -> dict:
+    """Send one authenticated command to Music Assistant and return result."""
+    token = MA_TOKEN_PATH.read_text().strip()
+    async with websockets.connect(MA_WS_URL) as ws:
+        await ws.recv()  # server info
+        await ws.send(json.dumps({"message_id": 1, "command": "auth", "args": {"token": token}}))
+        auth = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        if not auth.get("result", {}).get("authenticated"):
+            raise HTTPException(503, detail="MA auth failed")
+        await ws.send(json.dumps({"message_id": 2, "command": command, "args": args}))
+        resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+    if "error_code" in resp:
+        raise HTTPException(502, detail=f"MA error {resp['error_code']}: {resp.get('details')}")
+    return resp.get("result", {})
+
+
+class PlayRequest(BaseModel):
+    query: str
+    media_type: str = "playlist"  # playlist | track | artist | album | radio
+
+
+@app.post("/api/ma/play")
+async def api_ma_play(req: PlayRequest):
+    """Search MA and play top result on the Jasper player."""
+    results = await _ma_command("music/search", {
+        "search_query": req.query,
+        "media_types": [req.media_type],
+        "limit": 5,
+    })
+    items = results.get(req.media_type + "s", []) or results.get("tracks", [])
+    if not items:
+        # Fallback: search across all types
+        results = await _ma_command("music/search", {
+            "search_query": req.query,
+            "limit": 5,
+        })
+        for key in ("playlists", "tracks", "artists", "albums", "radio"):
+            if results.get(key):
+                items = results[key]
+                break
+    if not items:
+        raise HTTPException(404, detail=f"No results found for: {req.query}")
+    uri = items[0].get("uri") or items[0].get("item_id")
+    await _ma_command("player_queues/play_media", {
+        "queue_id": MA_PLAYER_ID,
+        "media": uri,
+        "option": "replace",
+    })
+    return {"ok": True, "playing": items[0].get("name"), "uri": uri}
+
+
+@app.post("/api/ma/pause")
+async def api_ma_pause():
+    await _ma_command("player_queues/pause", {"queue_id": MA_PLAYER_ID})
+    return {"ok": True}
+
+
+@app.post("/api/ma/resume")
+async def api_ma_resume():
+    await _ma_command("player_queues/play", {"queue_id": MA_PLAYER_ID})
+    return {"ok": True}
+
+
+@app.post("/api/ma/next")
+async def api_ma_next():
+    await _ma_command("player_queues/next", {"queue_id": MA_PLAYER_ID})
+    return {"ok": True}
+
+
+@app.post("/api/ma/previous")
+async def api_ma_previous():
+    await _ma_command("player_queues/previous", {"queue_id": MA_PLAYER_ID})
+    return {"ok": True}
+
+
+class VolumeRequest(BaseModel):
+    level: int  # 0–100
+
+
+@app.post("/api/ma/volume")
+async def api_ma_volume(req: VolumeRequest):
+    await _ma_command("players/cmd/volume_set", {
+        "player_id": MA_PLAYER_ID,
+        "volume_level": max(0, min(100, req.level)),
+    })
+    return {"ok": True, "volume": req.level}
+
+
+# ---------------------------------------------------------------------------
+# API: audio ducking (called by HA automations on TTS start/end)
+# ---------------------------------------------------------------------------
+
+async def _cdsp_get_volume() -> float:
+    async with websockets.connect(CDSP_WS_URL) as ws:
+        await ws.send(json.dumps({"GetVolume": None}))
+        resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=3))
+        return resp["GetVolume"]["value"]
+
+
+async def _cdsp_set_volume(db: float) -> None:
+    async with websockets.connect(CDSP_WS_URL) as ws:
+        await ws.send(json.dumps({"SetVolume": db}))
+        await asyncio.wait_for(ws.recv(), timeout=3)
+
+
+@app.post("/api/duck/start")
+async def api_duck_start():
+    global _pre_duck_volume
+    try:
+        _pre_duck_volume = await _cdsp_get_volume()
+        await _cdsp_set_volume(_pre_duck_volume - DUCK_REDUCTION_DB)
+    except Exception as e:
+        raise HTTPException(503, detail=f"CamillaDSP unavailable: {e}")
+    return {"ok": True, "was": _pre_duck_volume, "now": _pre_duck_volume - DUCK_REDUCTION_DB}
+
+
+@app.post("/api/duck/end")
+async def api_duck_end():
+    global _pre_duck_volume
+    try:
+        target = _pre_duck_volume if _pre_duck_volume is not None else 0.0
+        await _cdsp_set_volume(target)
+        _pre_duck_volume = None
+    except Exception as e:
+        raise HTTPException(503, detail=f"CamillaDSP unavailable: {e}")
+    return {"ok": True, "restored_to": target}
 
 
 # ---------------------------------------------------------------------------

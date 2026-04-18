@@ -10,42 +10,23 @@ Built for [Jasper Tech](https://youtube.com/@JasperTech) · Engineered by Xhovan
 A DIY active speaker system combining:
 
 - **CamillaDSP** — multi-channel DSP/crossover/EQ pipeline
-- **Music Assistant** — unified Spotify Connect, AirPlay 2, and local library
-- **Home Assistant** — voice control via OpenAI + audio ducking
+- **Music Assistant** — Spotify Connect, AirPlay 2, unified search + voice playback
+- **Home Assistant** — voice control via Claude (Anthropic) + audio ducking
 - **HiFiBerry DAC8x** — 8-channel balanced audio output
+- **HA Voice PE** — wake word detection + microphone input
 
-Everything passes through the DSP chain before hitting the speakers.
+Voice responses play through the passive speakers via Music Assistant's announce channel. Music ducks automatically when the assistant speaks.
 
 ---
 
 ## Hardware
 
-| Component              | Qty | Notes                      |
-| ---------------------- | --- | -------------------------- |
-| Raspberry Pi 5 (8GB)   | 1   | Main compute               |
-| HiFiBerry DAC8x        | 1   | 8-ch PCM5242, balanced out |
-| TPA3255 4-ch Amp Board | 1   | Powers full-range drivers  |
-| HA Voice PE            | 1   | Mic input + wake word      |
-
----
-
-## Quick Start
-
-```bash
-# 1. Flash Pi OS Lite (64-bit), enable SSH, set hostname to 'jasper'
-# 2. Clone this repo
-git clone https://github.com/xhovani/jasper-speaker.git
-cd jasper-speaker
-
-# 3. Run bootstrap
-chmod +x scripts/setup.sh
-./scripts/setup.sh
-
-# 4. Verify audio chain
-./scripts/test_audio.sh
-```
-
-See `docs/architecture.md` for full signal flow.
+| Component              | Qty | Notes                           |
+| ---------------------- | --- | ------------------------------- |
+| Raspberry Pi 5 (8GB)   | 1   | Main compute                    |
+| HiFiBerry DAC8x        | 1   | 8-ch PCM5242, balanced out      |
+| TPA3255 4-ch Amp Board | 1   | Powers full-range drivers (DIFF mode) |
+| HA Voice PE            | 1   | Mic input + wake word           |
 
 ---
 
@@ -54,20 +35,78 @@ See `docs/architecture.md` for full signal flow.
 ```
 Spotify / AirPlay / Local Library
           ↓
-Music Assistant
+    Music Assistant (Docker, port 8095)
           ↓
-Squeezelite
+      Squeezelite
           ↓
-ALSA Loopback Device
+    ALSA Loopback Device
           ↓
-CamillaDSP ← voice/notifications also enter here (crossover + EQ)
+    CamillaDSP  ←── TTS voice responses also enter here (via MA announce)
+    (crossover + EQ + 8-ch upmix)
           ↓
-HiFiBerry DAC8x
+    HiFiBerry DAC8x
           ↓
-TPA3255 Amp (4-ch)
+    TPA3255 Amp (4-ch, DIFF mode)
           ↓
-Speakers
+        Speakers
+
+Voice path:
+  Wake word (Voice PE) → Faster-Whisper STT → Claude (Haiku) → Piper TTS
+                                                                    ↓
+                                                         Jasper passive speakers
 ```
+
+---
+
+## Quick Start
+
+```bash
+# 1. Flash Pi OS Lite (64-bit), enable SSH
+git clone https://github.com/xhovani/jasper-speaker.git
+cd jasper-speaker
+
+# 2. Bootstrap (installs deps, systemd services, Docker)
+sudo ./scripts/setup.sh
+sudo reboot
+
+# 3. Start Docker stack
+cd docker && docker compose up -d
+
+# 4. Check everything
+cd .. && ./scripts/health.sh
+```
+
+Then follow the setup steps that `health.sh` reports as missing.
+
+**Moving to a new network or new Pi?** See [`docs/new-site-setup.md`](docs/new-site-setup.md).
+
+---
+
+## Services
+
+| Service          | Type    | Port  | Notes                              |
+| ---------------- | ------- | ----- | ---------------------------------- |
+| Home Assistant   | Docker  | 8123  | Voice pipeline, automations        |
+| Music Assistant  | Docker  | 8095  | Spotify/AirPlay, player control    |
+| Faster-Whisper   | Docker  | 10300 | Speech-to-text (Wyoming protocol)  |
+| Piper            | Docker  | 10200 | Text-to-speech (Wyoming protocol)  |
+| CamillaDSP       | systemd | 1234  | DSP pipeline WebSocket             |
+| Squeezelite      | systemd | —     | ALSA loopback player               |
+| Jasper Web UI    | systemd | 8080  | Dashboard + MA/CDSP control        |
+
+---
+
+## Credentials / Secrets
+
+These files live in the repo root and are **git-ignored**:
+
+| File        | What it is                          | How to create                                      |
+| ----------- | ----------------------------------- | -------------------------------------------------- |
+| `.ha_token` | HA long-lived access token          | HA → Profile → Security → Long-Lived Access Tokens |
+| `.ma_token` | MA long-lived token                 | `./scripts/ma_token.sh`                            |
+
+The **Anthropic API key** lives inside HA (Settings → Integrations → Claude), not in any file here.  
+**Spotify credentials** live inside MA (Settings → Providers → Spotify).
 
 ---
 
@@ -78,27 +117,28 @@ jasper-speaker/
 ├── README.md
 ├── MILESTONES.md
 ├── docs/
-│   ├── architecture.md       # Signal flow + design decisions
-│   └── speaker-notes.md      # CamillaDSP EQ findings, FR notes
+│   ├── architecture.md        # Design decisions
+│   ├── new-site-setup.md      # Relocation / new network guide
+│   └── speaker-notes.md       # CamillaDSP EQ notes
 ├── audio/
-│   ├── camilla_config.yml    # CamillaDSP pipeline config
-│   └── alsa_loopback.conf    # ALSA loopback setup
+│   ├── camilla_config.yml     # CamillaDSP pipeline config
+│   └── alsa_loopback.conf     # ALSA loopback setup
 ├── docker/
-│   ├── docker-compose.yml    # Music Assistant + Home Assistant
-│   └── .env.example          # API keys template
+│   ├── docker-compose.yml     # All Docker services
+│   └── .env.example           # Environment template
 ├── systemd/
-│   └── *.service             # Boot ordering unit files
+│   └── *.service              # Boot-ordered unit files
+├── webui/
+│   ├── app.py                 # FastAPI dashboard + MA/CDSP proxy
+│   ├── index.html             # Dashboard frontend
+│   └── requirements.txt
 └── scripts/
-    ├── setup.sh              # One-shot bootstrap
-    └── test_audio.sh         # Loopback verification
+    ├── setup.sh               # One-shot bootstrap
+    ├── health.sh              # Service + credential health check
+    ├── ma_token.sh            # Regenerate MA long-lived token
+    └── test_audio.sh          # ALSA loopback verification
 ```
 
 ---
 
-## Milestones
-
-See [MILESTONES.md](MILESTONES.md) for current progress.
-
----
-
-_Xhovani Mali · FPGA/Embedded Engineer · March–April 2026_
+_Xhovani Mali · March–April 2026_

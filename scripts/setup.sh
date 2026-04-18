@@ -1,108 +1,127 @@
 #!/usr/bin/env bash
-# setup.sh — One-shot bootstrap for jasper-speaker on Raspberry Pi 5
-# Run as: sudo ./scripts/setup.sh
+# setup.sh — Bootstrap jasper-speaker on a Raspberry Pi 5
+# Run as root: sudo ./scripts/setup.sh
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-USER_HOME="/home/pi"
+INSTALL_USER="${SUDO_USER:-$(logname 2>/dev/null || echo pi)}"
+USER_HOME="$(getent passwd "$INSTALL_USER" | cut -d: -f6)"
 
-echo "==> jasper-speaker bootstrap"
-echo "    Repo: $REPO_DIR"
+echo "╔══════════════════════════════════════════╗"
+echo "║      jasper-speaker bootstrap            ║"
+echo "╚══════════════════════════════════════════╝"
+echo "  Repo  : $REPO_DIR"
+echo "  User  : $INSTALL_USER ($USER_HOME)"
 echo ""
 
-# ----------------------------------------------------------------
-# 1. System dependencies
-# ----------------------------------------------------------------
-echo "[1/7] Installing system packages..."
+# ── 1. System packages ────────────────────────────────────────────
+echo "[1/7] System packages..."
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-    squeezelite \
-    alsa-utils \
-    curl \
-    git \
-    ca-certificates
+    squeezelite alsa-utils curl git ca-certificates python3 python3-venv
 
-# ----------------------------------------------------------------
-# 2. ALSA loopback module
-# ----------------------------------------------------------------
-echo "[2/7] Configuring ALSA loopback..."
-echo "snd-aloop" > /etc/modules-load.d/snd-aloop.conf
-echo "options snd-aloop pcm_substreams=2" > /etc/modprobe.d/snd-aloop.conf
-modprobe snd-aloop pcm_substreams=2 || true
+# ── 2. ALSA loopback ──────────────────────────────────────────────
+echo "[2/7] ALSA loopback module..."
+echo "snd-aloop"                            > /etc/modules-load.d/snd-aloop.conf
+echo "options snd-aloop pcm_substreams=2"   > /etc/modprobe.d/snd-aloop.conf
+modprobe snd-aloop pcm_substreams=2 2>/dev/null || true
 
-# ----------------------------------------------------------------
-# 3. CamillaDSP — download latest release binary
-# ----------------------------------------------------------------
-echo "[3/7] Installing CamillaDSP..."
+# ── 3. CamillaDSP binary ──────────────────────────────────────────
+echo "[3/7] CamillaDSP..."
 CDSP_VERSION="2.0.3"
 CDSP_ARCH="aarch64-unknown-linux-gnu"
-CDSP_URL="https://github.com/HEnquist/camilladsp/releases/download/v${CDSP_VERSION}/camilladsp-linux-${CDSP_ARCH}.tar.gz"
-
-curl -fsSL "$CDSP_URL" | tar -xz -C /usr/local/bin/ camilladsp
-chmod +x /usr/local/bin/camilladsp
-echo "    CamillaDSP $CDSP_VERSION installed at /usr/local/bin/camilladsp"
-
-# ----------------------------------------------------------------
-# 4. Copy CamillaDSP config
-# ----------------------------------------------------------------
-echo "[4/7] Installing CamillaDSP config..."
-mkdir -p "$USER_HOME/jasper-speaker/audio"
-cp "$REPO_DIR/audio/camilla_config.yml" "$USER_HOME/jasper-speaker/audio/"
-chown -R pi:pi "$USER_HOME/jasper-speaker"
-
-# ----------------------------------------------------------------
-# 5. Docker
-# ----------------------------------------------------------------
-echo "[5/7] Installing Docker..."
-if ! command -v docker &>/dev/null; then
-    curl -fsSL https://get.docker.com | sh
-    usermod -aG docker pi
-    echo "    Docker installed. 'pi' added to docker group."
+if ! /usr/local/bin/camilladsp --version 2>/dev/null | grep -q "$CDSP_VERSION"; then
+    curl -fsSL "https://github.com/HEnquist/camilladsp/releases/download/v${CDSP_VERSION}/camilladsp-linux-${CDSP_ARCH}.tar.gz" \
+        | tar -xz -C /usr/local/bin/ camilladsp
+    chmod +x /usr/local/bin/camilladsp
+    echo "    Installed CamillaDSP $CDSP_VERSION"
 else
-    echo "    Docker already installed, skipping."
+    echo "    CamillaDSP $CDSP_VERSION already installed"
 fi
 
-# Copy docker compose files if not already present
+# ── 4. CamillaDSP config ──────────────────────────────────────────
+echo "[4/7] CamillaDSP config..."
+CDSP_CONF_DIR="$USER_HOME/.config/camilladsp"
+mkdir -p "$CDSP_CONF_DIR"
+cp "$REPO_DIR/audio/camilla_config.yml" "$CDSP_CONF_DIR/config.yml"
+chown -R "$INSTALL_USER:$INSTALL_USER" "$CDSP_CONF_DIR"
+
+# ── 5. Docker ─────────────────────────────────────────────────────
+echo "[5/7] Docker..."
+if ! command -v docker &>/dev/null; then
+    curl -fsSL https://get.docker.com | sh
+    usermod -aG docker "$INSTALL_USER"
+    echo "    Docker installed. '$INSTALL_USER' added to docker group."
+    echo "    NOTE: log out and back in (or reboot) for docker group to take effect."
+else
+    echo "    Docker already installed"
+fi
+
+# Docker data dirs
+for dir in music-assistant whisper piper; do
+    mkdir -p "$USER_HOME/$dir"
+    chown "$INSTALL_USER:$INSTALL_USER" "$USER_HOME/$dir"
+done
+
+# Copy docker-compose if not present
 DOCKER_DIR="$USER_HOME/jasper-speaker/docker"
 mkdir -p "$DOCKER_DIR"
 cp "$REPO_DIR/docker/docker-compose.yml" "$DOCKER_DIR/"
 if [ ! -f "$DOCKER_DIR/.env" ]; then
     cp "$REPO_DIR/docker/.env.example" "$DOCKER_DIR/.env"
-    echo "    Copied .env.example → docker/.env — fill in API keys before starting."
+    echo "    Created docker/.env from template"
 fi
-chown -R pi:pi "$DOCKER_DIR"
+chown -R "$INSTALL_USER:$INSTALL_USER" "$DOCKER_DIR"
 
-# ----------------------------------------------------------------
-# 6. Systemd services
-# ----------------------------------------------------------------
-echo "[6/7] Installing systemd services..."
-SYSTEMD_DIR="/etc/systemd/system"
-for svc in alsa-loopback camilladsp squeezelite jasper-docker; do
-    cp "$REPO_DIR/systemd/${svc}.service" "$SYSTEMD_DIR/"
-    systemctl enable "${svc}.service"
+# ── 6. Web UI venv ────────────────────────────────────────────────
+echo "[6/7] Web UI Python environment..."
+WEBUI_DIR="$REPO_DIR/webui"
+if [ ! -d "$WEBUI_DIR/.venv" ]; then
+    sudo -u "$INSTALL_USER" python3 -m venv "$WEBUI_DIR/.venv"
+fi
+sudo -u "$INSTALL_USER" "$WEBUI_DIR/.venv/bin/pip" install -q -r "$WEBUI_DIR/requirements.txt"
+echo "    Web UI dependencies installed"
+
+# ── 7. Systemd services ───────────────────────────────────────────
+echo "[7/7] Systemd services..."
+
+# Patch user in service files to match INSTALL_USER
+for svc_src in "$REPO_DIR/systemd/"*.service; do
+    svc_name="$(basename "$svc_src")"
+    # Replace /home/pi and User=pi with actual user
+    sed "s|/home/pi|$USER_HOME|g; s|User=pi|User=$INSTALL_USER|g; s|Group=pi|Group=$INSTALL_USER|g" \
+        "$svc_src" > "/etc/systemd/system/$svc_name"
+done
+
+for svc in alsa-loopback camilladsp squeezelite jasper-docker jasper-webui; do
+    systemctl enable "${svc}.service" 2>/dev/null || true
 done
 systemctl daemon-reload
-echo "    Services enabled: alsa-loopback → camilladsp → squeezelite → jasper-docker"
+echo "    Services enabled"
 
-# ----------------------------------------------------------------
-# 7. HiFiBerry DAC8x overlay
-# ----------------------------------------------------------------
+# ── HiFiBerry DAC8x overlay ───────────────────────────────────────
 CONFIG_TXT="/boot/firmware/config.txt"
-echo "[7/7] Checking HiFiBerry DAC8x overlay in $CONFIG_TXT..."
-if grep -q "hifiberry-dac8x" "$CONFIG_TXT"; then
-    echo "    Overlay already present."
-else
-    echo "" >> "$CONFIG_TXT"
-    echo "# HiFiBerry DAC8x" >> "$CONFIG_TXT"
-    echo "dtoverlay=hifiberry-dac8x" >> "$CONFIG_TXT"
-    echo "    Overlay added. Reboot required for DAC8x to appear."
+if [ -f "$CONFIG_TXT" ]; then
+    if ! grep -q "hifiberry-dac8x" "$CONFIG_TXT"; then
+        echo ""                            >> "$CONFIG_TXT"
+        echo "# HiFiBerry DAC8x"          >> "$CONFIG_TXT"
+        echo "dtoverlay=hifiberry-dac8x"  >> "$CONFIG_TXT"
+        echo "    HiFiBerry overlay added to $CONFIG_TXT"
+    else
+        echo "    HiFiBerry overlay already present"
+    fi
 fi
 
-# ----------------------------------------------------------------
 echo ""
-echo "Bootstrap complete."
+echo "╔══════════════════════════════════════════╗"
+echo "║  Bootstrap complete                      ║"
+echo "╚══════════════════════════════════════════╝"
 echo ""
 echo "Next steps:"
-echo "  1. Edit $DOCKER_DIR/.env — add OPENAI_API_KEY and other secrets"
-echo "  2. Reboot: sudo reboot"
-echo "  3. After reboot, verify with: ./scripts/test_audio.sh"
+echo "  1. Reboot:                    sudo reboot"
+echo "  2. Start Docker stack:        cd docker && docker compose up -d"
+echo "  3. Check everything:          ./scripts/health.sh"
+echo "  4. Open Home Assistant:       http://$(hostname -I | awk '{print $1}'):8123"
+echo "  5. Open Music Assistant:      http://$(hostname -I | awk '{print $1}'):8095"
+echo ""
+echo "  See docs/new-site-setup.md for full configuration walkthrough."

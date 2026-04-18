@@ -4,10 +4,10 @@ After=squeezelite.service network-online.target
 Wants=network-online.target
 
 [Service]
-User=pi
-Group=pi
-WorkingDirectory=/home/pi/jasper-speaker/webui
-ExecStart=/home/pi/jasper-speaker/webui/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8080
+User=jaspertech
+Group=jaspertech
+WorkingDirectory=/home/jaspertech/jasper-speaker/webui
+ExecStart=/home/jaspertech/jasper-speaker/webui/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8080
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal
