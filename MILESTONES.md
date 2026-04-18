@@ -49,8 +49,8 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - [x] Wake word active — responds to "hello Nabu"
 - [x] Custom wake word configured (e.g. "Hey Jasper")
 
-#### Conversation agent swap
-- [x] Switch pipeline from default Nabu Casa agent to Claude (Haiku) or Gemini
+#### Conversation agent
+- [x] Switch pipeline from default Nabu Casa agent to Claude (Haiku)
 - [x] Verify Q&A quality through voice end to end
 
 #### Spotify voice control
@@ -65,7 +65,6 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 
 #### TTS voice quality
 - [ ] Evaluate Piper voice options and select best available voice
-- [ ] If quality is insufficient, explore Gemini or Google Cloud TTS as alternatives
 
 #### Audio ducking
 - [ ] Music lowers when assistant speaks, resumes after
@@ -76,9 +75,11 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 ### Demo
 <!-- Loom link here -->
 ### Notes
-- Voice PE is working with the default Nabu Casa pipeline — next step is swapping in Claude or Gemini as the conversation agent so Q&A answers are actually good
+- Claude (Haiku) is confirmed as the conversation agent — Q&A working well end to end via voice
+- Music + voice integration is the current blocker — Spotify voice control in progress
+- Sticking with Claude for the conversation backend; no plans to swap in Gemini or other agents
 - Primary use cases: Spotify playback control + general knowledge Q&A via voice
-- Current approach: use existing HA Wyoming pipelines (Piper TTS) — external voice APIs (Gemini, Google Cloud TTS) deferred unless local TTS quality is insufficient
+- Current approach: Piper TTS via Wyoming — evaluate voice options before M3 is closed out
 - The Pi also runs Home Assistant for Zigbee home control (lights, blinds, fans); consolidating onto the speaker hardware is possible but out of scope
 ---
 
