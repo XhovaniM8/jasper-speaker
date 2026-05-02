@@ -5,12 +5,12 @@ devices:
   capture:
     type: Alsa
     channels: 2
-    device: "hw:0,1"
+    device: "hw:Loopback,1"
     format: S16LE
   playback:
     type: Alsa
     channels: 8
-    device: "hw:1,0"
+    device: "hw:sndrpihifiberry,0"
     format: S32LE
 
 filters:

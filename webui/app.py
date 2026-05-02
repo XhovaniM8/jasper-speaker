@@ -42,14 +42,29 @@ ALLOWED_ACTIONS = {"start", "stop", "restart"}
 
 MA_WS_URL = "ws://localhost:8095/ws"
 MA_TOKEN_PATH = REPO_DIR / ".ma_token"
-MA_PLAYER_ID = "00:00:00:00:00:00"  # squeezelite "Jasper"
+JASPER_PLAYER_NAME = os.environ.get("JASPER_PLAYER_NAME", "Jasper")
+_resolved_player_id: Optional[str] = None
+
+
+async def _ma_player_id() -> str:
+    global _resolved_player_id
+    if _resolved_player_id:
+        return _resolved_player_id
+    players = await _ma_command("players/all", {})
+    match = next((p for p in players if p.get("name") == JASPER_PLAYER_NAME), None)
+    if not match:
+        raise HTTPException(404, detail=f"MA player '{JASPER_PLAYER_NAME}' not found — set JASPER_PLAYER_NAME env var")
+    _resolved_player_id = match["player_id"]
+    return _resolved_player_id
 
 # Background tone subprocess
 _tone_proc: Optional[subprocess.Popen] = None
 
 # Volume saved before ducking
 _pre_duck_volume: Optional[float] = None
+_duck_restore_task: Optional[asyncio.Task] = None
 DUCK_REDUCTION_DB = 20.0
+DUCK_AUTO_RESTORE_S = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -268,8 +283,9 @@ async def api_ma_play(req: PlayRequest):
     if not items:
         raise HTTPException(404, detail=f"No results found for: {req.query}")
     uri = items[0].get("uri") or items[0].get("item_id")
+    pid = await _ma_player_id()
     await _ma_command("player_queues/play_media", {
-        "queue_id": MA_PLAYER_ID,
+        "queue_id": pid,
         "media": uri,
         "option": "replace",
     })
@@ -278,25 +294,25 @@ async def api_ma_play(req: PlayRequest):
 
 @app.post("/api/ma/pause")
 async def api_ma_pause():
-    await _ma_command("player_queues/pause", {"queue_id": MA_PLAYER_ID})
+    await _ma_command("player_queues/pause", {"queue_id": await _ma_player_id()})
     return {"ok": True}
 
 
 @app.post("/api/ma/resume")
 async def api_ma_resume():
-    await _ma_command("player_queues/play", {"queue_id": MA_PLAYER_ID})
+    await _ma_command("player_queues/play", {"queue_id": await _ma_player_id()})
     return {"ok": True}
 
 
 @app.post("/api/ma/next")
 async def api_ma_next():
-    await _ma_command("player_queues/next", {"queue_id": MA_PLAYER_ID})
+    await _ma_command("player_queues/next", {"queue_id": await _ma_player_id()})
     return {"ok": True}
 
 
 @app.post("/api/ma/previous")
 async def api_ma_previous():
-    await _ma_command("player_queues/previous", {"queue_id": MA_PLAYER_ID})
+    await _ma_command("player_queues/previous", {"queue_id": await _ma_player_id()})
     return {"ok": True}
 
 
@@ -307,7 +323,7 @@ class VolumeRequest(BaseModel):
 @app.post("/api/ma/volume")
 async def api_ma_volume(req: VolumeRequest):
     await _ma_command("players/cmd/volume_set", {
-        "player_id": MA_PLAYER_ID,
+        "player_id": await _ma_player_id(),
         "volume_level": max(0, min(100, req.level)),
     })
     return {"ok": True, "volume": req.level}
@@ -315,11 +331,11 @@ async def api_ma_volume(req: VolumeRequest):
 
 @app.get("/api/ma/status")
 async def api_ma_status():
-    """Return current player + queue state for the Jasper player."""
     try:
+        pid = await _ma_player_id()
         players = await _ma_command("players/all", {})
-        player = next((p for p in players if p.get("player_id") == MA_PLAYER_ID), None)
-        queue = await _ma_command("player_queues/get", {"queue_id": MA_PLAYER_ID})
+        player = next((p for p in players if p.get("player_id") == pid), None)
+        queue = await _ma_command("player_queues/get", {"queue_id": pid})
         current_item = queue.get("current_item") or {}
         media = current_item.get("media_item") or {}
         artists = media.get("artists") or []
@@ -355,20 +371,43 @@ async def _cdsp_set_volume(db: float) -> None:
         await asyncio.wait_for(ws.recv(), timeout=3)
 
 
+async def _auto_restore_duck():
+    await asyncio.sleep(DUCK_AUTO_RESTORE_S)
+    global _pre_duck_volume, _duck_restore_task
+    if _pre_duck_volume is not None:
+        try:
+            await _cdsp_set_volume(_pre_duck_volume)
+        except Exception:
+            pass
+        _pre_duck_volume = None
+    _duck_restore_task = None
+
+
+@app.get("/api/duck/status")
+async def api_duck_status():
+    return {"ducked": _pre_duck_volume is not None, "saved_volume": _pre_duck_volume}
+
+
 @app.post("/api/duck/start")
 async def api_duck_start():
-    global _pre_duck_volume
+    global _pre_duck_volume, _duck_restore_task
+    if _duck_restore_task and not _duck_restore_task.done():
+        _duck_restore_task.cancel()
     try:
         _pre_duck_volume = await _cdsp_get_volume()
         await _cdsp_set_volume(_pre_duck_volume - DUCK_REDUCTION_DB)
     except Exception as e:
         raise HTTPException(503, detail=f"CamillaDSP unavailable: {e}")
+    _duck_restore_task = asyncio.create_task(_auto_restore_duck())
     return {"ok": True, "was": _pre_duck_volume, "now": _pre_duck_volume - DUCK_REDUCTION_DB}
 
 
 @app.post("/api/duck/end")
 async def api_duck_end():
-    global _pre_duck_volume
+    global _pre_duck_volume, _duck_restore_task
+    if _duck_restore_task and not _duck_restore_task.done():
+        _duck_restore_task.cancel()
+    _duck_restore_task = None
     try:
         target = _pre_duck_volume if _pre_duck_volume is not None else 0.0
         await _cdsp_set_volume(target)

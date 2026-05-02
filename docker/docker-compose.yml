@@ -17,8 +17,10 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=America/New_York
-      - WHISPER_MODEL=tiny-int8
+      - WHISPER_MODEL=base-int8
       - WHISPER_LANG=en
+      - WHISPER_VAD_FILTER=true
+      - WHISPER_BEAM_SIZE=5
     volumes:
       - /home/jaspertech/whisper:/config
     ports:

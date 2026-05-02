@@ -78,6 +78,14 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - Audio ducking: CamillaDSP drops 20 dB on TTS start, restores on TTS end
 ---
 
+## M3.5 — Room EQ
+**ETA:** ~1 week after M3 | **Status:** Not started
+### Scope
+- [ ] Measure room response with HouseCurve or REW
+- [ ] Generate correction filter
+- [ ] Load filter into CamillaDSP pipeline
+- [ ] Commit filter file to `audio/`
+- [ ] Write `docs/room-eq.md` with end-to-end walkthrough
 ### Deliverable
 - Correction filter committed to repo
 - `docs/room-eq.md` with end-to-end walkthrough
@@ -90,7 +98,13 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - HouseCurve auto-EQ docs: https://housecurve.com/docs/tuning/equalization#automatic-equalization
 - REW: https://www.roomeqwizard.com/
 ---
-
+## M4 — Appliance Polish
+**ETA:** ~1 week after M3.5 | **Status:** Not started
+### Scope
+- [ ] Boot-to-music time under 30s verified
+- [ ] All services auto-restart cleanly after power loss
+- [ ] Final repo docs complete and merged to `main`
+- [ ] Tag `v1.0-m4-appliance`
 ### Deliverable
 - Boot-to-music timing demo (video)
 - Final repo with full docs merged to `main`

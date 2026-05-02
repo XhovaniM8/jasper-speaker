@@ -124,6 +124,5 @@ All green = ready. Any failures include the exact fix.
 
 ## Known limitations
 
-- **ALSA card numbering** — The HiFiBerry DAC8x card number can shift if USB audio devices are plugged in at boot. If audio stops working, check `aplay -l` and update `squeezelite.service` (`-o hw:X,0`) and `camilla_config.yml` accordingly.
-- **Squeezelite MAC** — The squeezelite player registers in MA as `00:00:00:00:00:00`. If MA shows the player as offline after a fresh setup, restart the squeezelite service: `sudo systemctl restart squeezelite`.
+- **Multiple speakers** — Each Pi should have a unique Squeezelite player name (set via `-n` in `squeezelite.service`). Set `JASPER_PLAYER_NAME` in the webui environment to match so the dashboard controls the right player.
 - **HA + MA tokens** — These are not in the repo (`.gitignore`). They must be created fresh on any new setup.

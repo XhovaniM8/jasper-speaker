@@ -43,7 +43,7 @@ fi
 echo "[4/7] CamillaDSP config..."
 CDSP_CONF_DIR="$USER_HOME/.config/camilladsp"
 mkdir -p "$CDSP_CONF_DIR"
-cp "$REPO_DIR/audio/camilla_config.yml" "$CDSP_CONF_DIR/config.yml"
+ln -sf "$REPO_DIR/audio/camilla_config.yml" "$CDSP_CONF_DIR/config.yml"
 chown -R "$INSTALL_USER:$INSTALL_USER" "$CDSP_CONF_DIR"
 
 # ── 5. Docker ─────────────────────────────────────────────────────
