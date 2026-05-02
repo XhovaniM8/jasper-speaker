@@ -30,33 +30,6 @@ Voice responses play through the passive speakers via Music Assistant's announce
 
 ---
 
-## Signal Flow
-
-```
-Spotify / AirPlay / Local Library
-          ↓
-    Music Assistant (Docker, port 8095)
-          ↓
-      Squeezelite
-          ↓
-    ALSA Loopback Device
-          ↓
-    CamillaDSP  ←── TTS voice responses also enter here (via MA announce)
-    (crossover + EQ + 8-ch upmix)
-          ↓
-    HiFiBerry DAC8x
-          ↓
-    TPA3255 Amp (4-ch, DIFF mode)
-          ↓
-        Speakers
-
-Voice path:
-  Wake word (Voice PE) → Faster-Whisper STT → Claude (Haiku) → Piper TTS
-                                                                    ↓
-                                                         Jasper passive speakers
-```
-
----
 
 ## Quick Start
 
