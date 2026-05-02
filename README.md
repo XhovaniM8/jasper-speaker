@@ -69,20 +69,6 @@ Then follow the setup steps that `health.sh` reports as missing.
 
 ---
 
-## Credentials / Secrets
-
-These files live in the repo root and are **git-ignored**:
-
-| File        | What it is                          | How to create                                      |
-| ----------- | ----------------------------------- | -------------------------------------------------- |
-| `.ha_token` | HA long-lived access token          | HA → Profile → Security → Long-Lived Access Tokens |
-| `.ma_token` | MA long-lived token                 | `./scripts/ma_token.sh`                            |
-
-The **Anthropic API key** lives inside HA (Settings → Integrations → Claude), not in any file here.  
-**Spotify credentials** live inside MA (Settings → Providers → Spotify).
-
----
-
 ## Repo Structure
 
 ```
