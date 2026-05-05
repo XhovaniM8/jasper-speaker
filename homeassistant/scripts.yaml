@@ -1,0 +1,54 @@
+jasper_play_music:
+  alias: "Play music on Jasper"
+  description: "Search Music Assistant and play on the Jasper speaker. Use query for artist, genre, playlist name, or song title."
+  fields:
+    query:
+      description: "What to play (e.g. 'jazz', 'The Beatles', 'lo-fi hip hop')"
+      required: true
+      example: "jazz"
+    media_type:
+      description: "Type: playlist, track, artist, album (default: playlist)"
+      required: false
+      example: "playlist"
+  sequence:
+    - service: rest_command.jasper_play
+      data:
+        query: "{{ query }}"
+        media_type: "{{ media_type | default('playlist') }}"
+
+jasper_pause_music:
+  alias: "Pause music on Jasper"
+  description: "Pause the currently playing music on the Jasper speaker."
+  sequence:
+    - service: rest_command.jasper_pause
+
+jasper_resume_music:
+  alias: "Resume music on Jasper"
+  description: "Resume playback on the Jasper speaker."
+  sequence:
+    - service: rest_command.jasper_resume
+
+jasper_next_track:
+  alias: "Next track on Jasper"
+  description: "Skip to the next track on the Jasper speaker."
+  sequence:
+    - service: rest_command.jasper_next
+
+jasper_previous_track:
+  alias: "Previous track on Jasper"
+  description: "Go back to the previous track on the Jasper speaker."
+  sequence:
+    - service: rest_command.jasper_previous
+
+jasper_set_volume:
+  alias: "Set volume on Jasper"
+  description: "Set the music volume on the Jasper speaker (0-100)."
+  fields:
+    level:
+      description: "Volume level 0-100"
+      required: true
+      example: 50
+  sequence:
+    - service: rest_command.jasper_volume
+      data:
+        level: "{{ level }}"

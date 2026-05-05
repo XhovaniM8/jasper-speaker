@@ -1,10 +1,11 @@
 [Unit]
 Description=CamillaDSP
-After=sound.target
+After=alsa-loopback.service sound.target
+Requires=alsa-loopback.service
 
 [Service]
 User=jaspertech
-ExecStart=/usr/local/bin/camilladsp /home/jaspertech/.config/camilladsp/config.yml
+ExecStart=/usr/local/bin/camilladsp -p 1234 /home/jaspertech/.config/camilladsp/config.yml
 Restart=always
 RestartSec=3
 

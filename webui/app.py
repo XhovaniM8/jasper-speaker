@@ -26,6 +26,16 @@ CONFIG_PATH = REPO_DIR / "audio" / "camilla_config.yml"
 TEST_SCRIPT = REPO_DIR / "scripts" / "test_audio.sh"
 CDSP_WS_URL = "ws://localhost:1234"
 
+# Home Assistant integration
+HA_TOKEN_PATH = Path("/home/jaspertech/.ha_token")
+HA_WS_URL = "ws://localhost:8123/api/websocket"
+HA_API_BASE = "http://localhost:8123"
+JASPER_PIPELINE_ID = "01km6zkgx2mskx0g09j4zztbrg"  # JasperVoice pipeline
+JASPER_ENTITY_ID = "media_player.jasper"
+VOICE_PE_ENTITY_ID = "media_player.home_assistant_voice_0a5232_media_player"
+TTS_POLL_TIMEOUT = 9.0   # seconds to wait for Piper to finish generating
+TTS_POLL_INTERVAL = 0.3  # polling cadence
+
 SERVICES = {
     "alsa-loopback": "systemd",
     "camilladsp": "systemd",
@@ -449,6 +459,114 @@ async def api_tone_stop():
         _tone_proc = None
         return {"ok": True, "stopped": True}
     return {"ok": True, "stopped": False}
+
+
+# ---------------------------------------------------------------------------
+# API: TTS bridge — polls HA pipeline debug for TTS URL, plays on Jasper
+# ---------------------------------------------------------------------------
+
+async def _ha_ws_connect():
+    """Open an authenticated HA WebSocket connection. Returns ws handle."""
+    token = HA_TOKEN_PATH.read_text().strip()
+    ws = await websockets.connect(HA_WS_URL)
+    hello = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+    if hello.get("type") != "auth_required":
+        await ws.close()
+        raise HTTPException(503, detail="HA WS unexpected hello")
+    await ws.send(json.dumps({"type": "auth", "access_token": token}))
+    auth_ok = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+    if auth_ok.get("type") != "auth_ok":
+        await ws.close()
+        raise HTTPException(503, detail=f"HA WS auth failed: {auth_ok.get('type')}")
+    return ws
+
+
+async def _ha_ws_cmd(ws, msg_id: int, msg_type: str, **kwargs) -> dict:
+    """Send one HA WebSocket command, return matching result message."""
+    payload = {"id": msg_id, "type": msg_type, **kwargs}
+    await ws.send(json.dumps(payload))
+    while True:
+        resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+        if resp.get("id") == msg_id:
+            return resp
+
+
+@app.post("/api/tts_bridge")
+async def api_tts_bridge():
+    """
+    Called by HA automation when satellite enters 'responding'.
+    Polls HA's pipeline debug API until Piper has generated TTS, then plays
+    the URL on media_player.jasper with announce=True so MA ducks & resumes.
+    """
+    tts_url: Optional[str] = None
+    deadline = asyncio.get_event_loop().time() + TTS_POLL_TIMEOUT
+
+    try:
+        ws = await _ha_ws_connect()
+        try:
+            msg_id = 1
+
+            # 1. Find the most recent run ID for the JasperVoice pipeline
+            latest_run_id: Optional[str] = None
+            while asyncio.get_event_loop().time() < deadline and latest_run_id is None:
+                resp = await _ha_ws_cmd(ws, msg_id,
+                                        "assist_pipeline/pipeline_debug/list",
+                                        pipeline_id=JASPER_PIPELINE_ID)
+                msg_id += 1
+                runs = resp.get("result", {}).get("pipeline_runs", [])
+                if runs:
+                    latest_run_id = runs[-1]["pipeline_run_id"]
+                else:
+                    await asyncio.sleep(TTS_POLL_INTERVAL)
+
+            if not latest_run_id:
+                raise HTTPException(504, detail="No pipeline runs found for JasperVoice")
+
+            # 2. Poll the run's events until tts-end appears
+            while asyncio.get_event_loop().time() < deadline:
+                resp = await _ha_ws_cmd(ws, msg_id,
+                                        "assist_pipeline/pipeline_debug/get",
+                                        pipeline_id=JASPER_PIPELINE_ID,
+                                        pipeline_run_id=latest_run_id)
+                msg_id += 1
+                for event in reversed(resp.get("result", {}).get("events", [])):
+                    if event.get("type") == "tts-end":
+                        out = event.get("data", {}).get("tts_output") or {}
+                        if out.get("url"):
+                            tts_url = out["url"]
+                            break
+                if tts_url:
+                    break
+                await asyncio.sleep(TTS_POLL_INTERVAL)
+
+            if not tts_url:
+                raise HTTPException(504, detail="TTS not ready within timeout")
+
+            # 3. Make URL absolute so Squeezelite can fetch it from the host
+            if tts_url.startswith("/"):
+                tts_url = f"{HA_API_BASE}{tts_url}"
+
+            # 4. Play on Jasper via HA service call (announce=True: MA ducks & resumes)
+            await _ha_ws_cmd(ws, msg_id, "call_service",
+                             domain="media_player",
+                             service="play_media",
+                             target={"entity_id": JASPER_ENTITY_ID},
+                             service_data={
+                                 "media_content_id": tts_url,
+                                 "media_content_type": "music",
+                                 "announce": True,
+                             })
+        finally:
+            await ws.close()
+
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError:
+        raise HTTPException(504, detail="Timeout waiting for HA WebSocket")
+    except Exception as e:
+        raise HTTPException(502, detail=f"TTS bridge error: {e}")
+
+    return {"ok": True, "tts_url": tts_url}
 
 
 # ---------------------------------------------------------------------------

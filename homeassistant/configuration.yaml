@@ -1,0 +1,46 @@
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+# REST commands for CamillaDSP ducking and Music Assistant control
+# The webui runs on the Pi at port 8080; use 172.17.0.1 from within Docker
+rest_command:
+  cdsp_duck_start:
+    url: "http://172.17.0.1:8080/api/duck/start"
+    method: POST
+  cdsp_duck_end:
+    url: "http://172.17.0.1:8080/api/duck/end"
+    method: POST
+  jasper_tts_bridge:
+    url: "http://172.17.0.1:8080/api/tts_bridge"
+    method: POST
+    timeout: 15
+  jasper_play:
+    url: "http://172.17.0.1:8080/api/ma/play"
+    method: POST
+    content_type: "application/json"
+    payload: '{"query": "{{ query }}", "media_type": "{{ media_type }}"}'
+  jasper_pause:
+    url: "http://172.17.0.1:8080/api/ma/pause"
+    method: POST
+  jasper_resume:
+    url: "http://172.17.0.1:8080/api/ma/resume"
+    method: POST
+  jasper_next:
+    url: "http://172.17.0.1:8080/api/ma/next"
+    method: POST
+  jasper_previous:
+    url: "http://172.17.0.1:8080/api/ma/previous"
+    method: POST
+  jasper_volume:
+    url: "http://172.17.0.1:8080/api/ma/volume"
+    method: POST
+    content_type: "application/json"
+    payload: '{"level": {{ level }}}'

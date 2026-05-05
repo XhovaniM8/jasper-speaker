@@ -5,7 +5,7 @@ Requires=camilladsp.service
 
 [Service]
 User=jaspertech
-ExecStart=/usr/bin/squeezelite -o hw:Loopback,0 -n "Jasper"
+ExecStart=/usr/bin/squeezelite -o hw:0,0 -n "Jasper"
 Restart=always
 RestartSec=5
 

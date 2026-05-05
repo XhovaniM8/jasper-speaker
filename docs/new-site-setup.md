@@ -7,7 +7,7 @@ Use this when setting up on a new network, new Pi, or after a fresh OS flash.
 ## 1. First-time setup (new Pi)
 
 ```bash
-git clone https://github.com/xhovani/jasper-speaker.git
+git clone https://github.com/XhovaniM8/jasper-speaker.git
 cd jasper-speaker
 sudo ./scripts/setup.sh
 sudo reboot
@@ -42,14 +42,53 @@ Run `./scripts/health.sh` — it will call out exactly what's broken.
 
 ## 3. Regenerate the HA token
 
+**Option A — via HA UI (preferred):**
+
 1. Open Home Assistant: `http://<pi-ip>:8123`
 2. Profile (bottom-left) → **Security** tab
 3. Scroll to **Long-Lived Access Tokens** → **Create Token**
 4. Name it `jasper-script`, copy the token
 5. Save it:
    ```bash
-   echo 'YOUR_TOKEN_HERE' > ~/jasper-speaker/.ha_token
+   echo 'YOUR_TOKEN_HERE' > ~/.ha_token
    ```
+
+**Option B — via SSH without UI access** (token expired or HA updated and revoked it):
+
+```bash
+# Find the existing long-lived token record and re-sign it
+sudo python3 -c "
+import json, time, base64, hmac, hashlib
+
+with open('/home/jaspertech/homeassistant/.storage/auth') as f:
+    d = json.load(f)
+
+# Find the long_lived_access_token record
+t = next(r for r in d['data']['refresh_tokens']
+         if r['token_type'] == 'long_lived_access_token')
+
+jwt_key = t['jwt_key']
+token_id = t['id']
+now = int(time.time())
+exp = now + 10 * 365 * 24 * 3600  # 10 years
+
+def b64url(data):
+    if isinstance(data, str): data = data.encode()
+    return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
+
+header  = b64url(json.dumps({'alg':'HS256','typ':'JWT'}))
+payload = b64url(json.dumps({'iss': token_id, 'iat': now, 'exp': exp}))
+msg = f'{header}.{payload}'
+sig = hmac.new(jwt_key.encode(), msg.encode(), hashlib.sha256).digest()
+jwt = f'{msg}.{b64url(sig)}'
+
+with open('/home/jaspertech/.ha_token', 'w') as f:
+    f.write(jwt)
+print('Token written. Test with: curl -s -H \"Authorization: Bearer \$(cat ~/.ha_token)\" http://localhost:8123/api/')
+"
+```
+
+> **Why this happens:** HA can invalidate stored tokens on major updates. The token in `.ha_token` references a refresh token record in HA's auth storage by its `iss` field. If that record was deleted, the token gets a 401. Option B re-signs a fresh JWT using the current record's key without touching HA auth state.
 
 ---
 

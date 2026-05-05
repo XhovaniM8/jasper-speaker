@@ -7,7 +7,7 @@ After=systemd-modules-load.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/sbin/modprobe snd-aloop pcm_substreams=2
+ExecStart=/sbin/modprobe snd-aloop
 ExecStop=/sbin/modprobe -r snd-aloop
 
 [Install]

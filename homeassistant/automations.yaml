@@ -1,0 +1,35 @@
+- id: tts_mirror_to_jasper
+  alias: "Play TTS response on Jasper speakers"
+  description: >
+    When satellite enters Responding, mute the Voice PE built-in speaker and
+    call the webui TTS bridge. The bridge polls HA's pipeline debug API until
+    Piper finishes generating, then plays the TTS URL on media_player.jasper
+    with announce=true so MA ducks music and resumes automatically.
+  trigger:
+    - platform: state
+      entity_id: assist_satellite.home_assistant_voice_0a5232_assist_satellite
+      to: "responding"
+  action:
+    - service: media_player.volume_set
+      target:
+        entity_id: media_player.home_assistant_voice_0a5232_media_player
+      data:
+        volume_level: 0.0
+    - service: rest_command.jasper_tts_bridge
+  mode: single
+
+- id: restore_voice_pe_volume
+  alias: "Restore Voice PE volume after TTS"
+  description: "Unmute the Voice PE when satellite returns to Idle so wake word still works."
+  trigger:
+    - platform: state
+      entity_id: assist_satellite.home_assistant_voice_0a5232_assist_satellite
+      to: "idle"
+      from: "responding"
+  action:
+    - service: media_player.volume_set
+      target:
+        entity_id: media_player.home_assistant_voice_0a5232_media_player
+      data:
+        volume_level: 1.0
+  mode: single

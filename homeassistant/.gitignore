@@ -1,0 +1,7 @@
+# Exclude everything by default; only track the hand-authored config files
+*
+!.gitignore
+!configuration.yaml
+!automations.yaml
+!scripts.yaml
+!scenes.yaml

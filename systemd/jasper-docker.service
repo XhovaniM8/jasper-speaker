@@ -1,13 +1,14 @@
 [Unit]
 Description=Jasper Docker Services (Music Assistant + Home Assistant)
-After=squeezelite.service docker.service network-online.target
-Requires=docker.service squeezelite.service
+After=docker.service network-online.target
+Requires=docker.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/pi/jasper-speaker/docker
+User=jaspertech
+WorkingDirectory=/home/jaspertech/jasper-speaker/docker
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
 Restart=no

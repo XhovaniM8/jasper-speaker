@@ -1,4 +1,16 @@
 services:
+  home-assistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - /home/jaspertech/homeassistant:/config
+      - /run/dbus:/run/dbus:ro
+    environment:
+      - TZ=America/New_York
+
   music-assistant:
     image: ghcr.io/music-assistant/server:latest
     container_name: music-assistant

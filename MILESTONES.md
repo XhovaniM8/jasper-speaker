@@ -63,9 +63,10 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - [x] Ask open-ended questions and get spoken answers (like a search engine)
 - [x] Conversation agent handles knowledge questions well (not just smart-home commands)
 
-#### Audio ducking
-- [x] Music lowers when assistant speaks, resumes after
-- [x] CamillaDSP duck/restore via webui REST endpoints
+#### TTS routing + Voice PE mic-only mode
+- [x] TTS plays through passive speakers at full volume (not Voice PE built-in speaker)
+- [x] Voice PE muted during TTS response, restored to idle
+- [x] MA announce handles music pause/resume automatically — no separate gain manipulation needed
 
 ### Deliverable
 - Video demo: voice command → Spotify control + Q&A response → music resumes
@@ -74,8 +75,8 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 ### Notes
 - Claude (Haiku via Anthropic HA integration) is the conversation agent
 - Music Assistant HA integration connected — `media_player.jasper` exposed to Claude with full search/play/pause/skip/volume
-- TTS responses mirror to Jasper passive speakers via MA announce; Voice PE silenced during response
-- Audio ducking: CamillaDSP drops 20 dB on TTS start, restores on TTS end
+- TTS routing: ESPHome Voice PE streams TTS via wyoming binary protocol (not media_player entity); webui TTS bridge polls HA pipeline debug WebSocket API for TTS URL, then calls `media_player.play_media` with `announce=true` on Jasper so MA handles pause/resume
+- CamillaDSP ducking automations removed — they were ducking TTS (which also routes through CamillaDSP); MA announce is the correct isolation layer
 ---
 
 ## M3.5 — Room EQ
@@ -99,10 +100,13 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - REW: https://www.roomeqwizard.com/
 ---
 ## M4 — Appliance Polish
-**ETA:** ~1 week after M3.5 | **Status:** Not started
+**ETA:** ~1 week after M3.5 | **Status:** In progress
 ### Scope
+- [x] All services auto-restart cleanly after power loss
+- [x] Boot service ordering hardened (alsa-loopback → camilladsp → squeezelite → webui; jasper-docker for containers)
+- [x] All Docker services consolidated into `docker/docker-compose.yml` (HA was standalone)
+- [x] HA config committed to repo under `homeassistant/`
 - [ ] Boot-to-music time under 30s verified
-- [ ] All services auto-restart cleanly after power loss
 - [ ] Final repo docs complete and merged to `main`
 - [ ] Tag `v1.0-m4-appliance`
 ### Deliverable
