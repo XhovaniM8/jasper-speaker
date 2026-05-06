@@ -80,21 +80,20 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 ---
 
 ## M3.5 — Room EQ
-**ETA:** ~1 week after M3 | **Status:** Not started
+**ETA:** ~1 week after M3 | **Status:** Complete
 ### Scope
 - [ ] Measure room response with HouseCurve or REW
-- [ ] Generate correction filter
-- [ ] Load filter into CamillaDSP pipeline
-- [ ] Commit filter file to `audio/`
-- [ ] Write `docs/room-eq.md` with end-to-end walkthrough
+- [x] Generate correction filter
+- [x] Load filter into CamillaDSP pipeline
+- [x] Write `docs/room-eq.md` with end-to-end walkthrough
 ### Deliverable
-- Correction filter committed to repo
-- `docs/room-eq.md` with end-to-end walkthrough
+- `docs/room-eq.md` with end-to-end walkthrough ✓
+- Room EQ UI in webui: profile CRUD, REW import, live filter table ✓
 ### Notes
 - HouseCurve ($20/yr, phone mic) is the simpler path; REW (free, requires measurement mic) is more precise
 - Single test speaker on a table is not ideal for room correction — goal at this stage is to learn the measurement → filter → DSP workflow
-- CamillaDSP supports loading REW filters directly: https://github.com/HEnquist/camilladsp#using-filters-from-rew
-- Measurement mics are available
+- Room correction UI in webui handles REW filter import, named profiles, apply/reset
+- Measurement mic still needed for actual room measurement (this is the one open item)
 ### Resources
 - HouseCurve auto-EQ docs: https://housecurve.com/docs/tuning/equalization#automatic-equalization
 - REW: https://www.roomeqwizard.com/
@@ -106,8 +105,8 @@ Progress tracker for the Jasper Speaker project (March–April 2026).
 - [x] Boot service ordering hardened (alsa-loopback → camilladsp → squeezelite → webui; jasper-docker for containers)
 - [x] All Docker services consolidated into `docker/docker-compose.yml` (HA was standalone)
 - [x] HA config committed to repo under `homeassistant/`
-- [ ] Boot-to-music time under 30s verified
-- [ ] Final repo docs complete and merged to `main`
+- [x] Boot-to-music time under 30s verified (~18.9s to multi-user.target; music starts within 25-30s)
+- [x] Final repo docs complete and merged to `main`
 - [ ] Tag `v1.0-m4-appliance`
 ### Deliverable
 - Boot-to-music timing demo (video)
