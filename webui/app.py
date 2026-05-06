@@ -4,16 +4,21 @@ Serves on port 8080, proxies CamillaDSP WS, exposes system control endpoints.
 """
 
 import asyncio
+import copy
 import json
+import logging
 import os
 import re
 import subprocess
 from pathlib import Path
 from typing import Optional
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("jasper")
+
 import yaml
 import websockets
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.websockets import WebSocketState
@@ -35,6 +40,19 @@ JASPER_ENTITY_ID = "media_player.jasper"
 VOICE_PE_ENTITY_ID = "media_player.home_assistant_voice_0a5232_media_player"
 TTS_POLL_TIMEOUT = 9.0   # seconds to wait for Piper to finish generating
 TTS_POLL_INTERVAL = 0.3  # polling cadence
+
+# Room EQ
+PROFILES_DIR = REPO_DIR / "audio" / "profiles"
+CDSP_LIVE_CONFIG_PATH = Path("/home/jaspertech/.config/camilladsp/config.yml")
+BASE_CONFIG_PATH = REPO_DIR / "audio" / "camilla_config.yml"
+REW_TYPE_MAP = {
+    "PK": "Peaking", "PEQ": "Peaking",
+    "LS": "Lowshelf", "LSC": "Lowshelf",
+    "HS": "Highshelf", "HSC": "Highshelf",
+    "LP": "Lowpass", "LP6": "Lowpass",
+    "HP": "Highpass", "HP6": "Highpass",
+    "NO": "Notch", "AP": "Allpass",
+}
 
 SERVICES = {
     "alsa-loopback": "systemd",
@@ -462,19 +480,213 @@ async def api_tone_stop():
 
 
 # ---------------------------------------------------------------------------
+# Helpers: CamillaDSP config get/set
+# ---------------------------------------------------------------------------
+
+async def _cdsp_get_config() -> dict:
+    """Return live CamillaDSP config as a parsed dict."""
+    async with websockets.connect(CDSP_WS_URL) as ws:
+        await ws.send(json.dumps({"GetConfig": None}))
+        resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        result = resp.get("GetConfig", {})
+        if result.get("result") != "Ok":
+            raise HTTPException(503, detail="CamillaDSP unavailable")
+        return yaml.safe_load(result["value"]) or {}
+
+
+def _config_to_yaml(cfg: dict) -> str:
+    """Serialise config dict back to YAML, stripping None values CamillaDSP added."""
+    def _strip_none(obj):
+        if isinstance(obj, dict):
+            return {k: _strip_none(v) for k, v in obj.items() if v is not None}
+        if isinstance(obj, list):
+            return [_strip_none(i) for i in obj]
+        return obj
+    return yaml.dump(_strip_none(cfg), default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+
+async def _cdsp_apply_config(cfg: dict) -> None:
+    """Apply config dict live via WebSocket and persist to disk."""
+    cfg_yaml = _config_to_yaml(cfg)
+    async with websockets.connect(CDSP_WS_URL) as ws:
+        await ws.send(json.dumps({"SetConfig": cfg_yaml}))
+        resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+        result = resp.get("SetConfig", {})
+        if result.get("result") != "Ok":
+            raise HTTPException(502, detail=f"CamillaDSP SetConfig failed: {result}")
+    CDSP_LIVE_CONFIG_PATH.write_text(cfg_yaml)
+
+
+def _parse_rew_filters(text: str) -> list[dict]:
+    """Parse REW 'Filter Settings' parametric EQ export → list of filter param dicts."""
+    results = []
+    pattern = re.compile(
+        r"Filter\s+\d+:\s+(ON|OFF)\s+(\w+)\s+Fc\s+([\d.]+)\s+Hz\s+Gain\s+([-\d.]+)\s+dB\s+Q\s+([\d.]+)",
+        re.IGNORECASE,
+    )
+    for m in pattern.finditer(text):
+        enabled, ftype, freq, gain, q = m.groups()
+        if enabled.upper() != "ON":
+            continue
+        cdsp_type = REW_TYPE_MAP.get(ftype.upper())
+        if not cdsp_type:
+            continue
+        results.append({
+            "cdsp_type": cdsp_type,
+            "freq": float(freq),
+            "gain": float(gain),
+            "q": float(q),
+        })
+    return results
+
+
+def _apply_rew_to_config(cfg: dict, rew_filters: list[dict]) -> dict:
+    """Add REW filters to config dict, replacing any existing rew_* entries."""
+    cfg = copy.deepcopy(cfg)
+    filters = cfg.setdefault("filters", {})
+
+    # Remove old rew_* filters
+    for k in [k for k in filters if k.startswith("rew_")]:
+        del filters[k]
+
+    new_names: list[str] = []
+    for i, f in enumerate(rew_filters, 1):
+        name = f"rew_{i}"
+        params: dict = {"type": f["cdsp_type"], "freq": f["freq"]}
+        if f["cdsp_type"] in ("Peaking", "Notch", "Allpass"):
+            params["gain"] = f["gain"]
+            params["q"] = f["q"]
+        elif f["cdsp_type"] in ("Lowshelf", "Highshelf"):
+            params["gain"] = f["gain"]
+            params["q"] = f["q"]
+        else:  # Lowpass, Highpass
+            params["q"] = f["q"]
+        filters[name] = {"type": "Biquad", "parameters": params}
+        new_names.append(name)
+
+    for step in cfg.get("pipeline", []):
+        if step.get("type") == "Filter":
+            existing = [n for n in (step.get("names") or []) if not n.startswith("rew_")]
+            step["names"] = existing + new_names
+
+    return cfg
+
+
+# ---------------------------------------------------------------------------
+# API: Room EQ — profiles
+# ---------------------------------------------------------------------------
+
+@app.get("/api/eq/profiles")
+async def api_eq_profiles():
+    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    return {"profiles": sorted(p.stem for p in PROFILES_DIR.glob("*.yml"))}
+
+
+@app.post("/api/eq/profiles/{name}")
+async def api_eq_profile_save(name: str):
+    if not re.match(r"^[\w\-]+$", name):
+        raise HTTPException(400, detail="Profile name: alphanumeric/dash/underscore only")
+    PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    cfg = await _cdsp_get_config()
+    (PROFILES_DIR / f"{name}.yml").write_text(_config_to_yaml(cfg))
+    return {"ok": True, "saved": name}
+
+
+@app.post("/api/eq/profiles/{name}/load")
+async def api_eq_profile_load(name: str):
+    path = PROFILES_DIR / f"{name}.yml"
+    if not path.exists():
+        raise HTTPException(404, detail=f"Profile '{name}' not found")
+    cfg = yaml.safe_load(path.read_text()) or {}
+    await _cdsp_apply_config(cfg)
+    return {"ok": True, "loaded": name}
+
+
+@app.delete("/api/eq/profiles/{name}")
+async def api_eq_profile_delete(name: str):
+    path = PROFILES_DIR / f"{name}.yml"
+    if not path.exists():
+        raise HTTPException(404, detail=f"Profile '{name}' not found")
+    path.unlink()
+    return {"ok": True, "deleted": name}
+
+
+# ---------------------------------------------------------------------------
+# API: Room EQ — import + filters
+# ---------------------------------------------------------------------------
+
+@app.post("/api/eq/import/rew")
+async def api_eq_import_rew(file: UploadFile = File(...)):
+    """Parse an REW 'Filter Settings' text export and apply to CamillaDSP."""
+    text = (await file.read()).decode("utf-8", errors="replace")
+    rew_filters = _parse_rew_filters(text)
+    if not rew_filters:
+        raise HTTPException(400, detail="No enabled filters found — export from REW as 'Filter Settings' text")
+    cfg = await _cdsp_get_config()
+    cfg = _apply_rew_to_config(cfg, rew_filters)
+    await _cdsp_apply_config(cfg)
+    return {"ok": True, "applied": len(rew_filters), "filters": rew_filters}
+
+
+@app.get("/api/eq/filters")
+async def api_eq_filters():
+    """Return all active biquad filters from the live CamillaDSP config."""
+    cfg = await _cdsp_get_config()
+    result = []
+    for name, fdef in (cfg.get("filters") or {}).items():
+        if not isinstance(fdef, dict):
+            continue
+        params = fdef.get("parameters") or {}
+        result.append({
+            "name": name,
+            "type": fdef.get("type"),
+            "subtype": params.get("type"),
+            "freq": params.get("freq"),
+            "gain": params.get("gain"),
+            "q": params.get("q"),
+            "is_rew": name.startswith("rew_"),
+        })
+    return {"filters": result}
+
+
+@app.post("/api/eq/reset")
+async def api_eq_reset():
+    """Remove all REW filters and restore the committed base config."""
+    if not BASE_CONFIG_PATH.exists():
+        raise HTTPException(404, detail="Base config not found at audio/camilla_config.yml")
+    cfg = yaml.safe_load(BASE_CONFIG_PATH.read_text()) or {}
+    await _cdsp_apply_config(cfg)
+    return {"ok": True}
+
+
+@app.get("/api/system/boot_time")
+async def api_boot_time():
+    """Return systemd-analyze output for boot timing."""
+    try:
+        out = subprocess.check_output(["systemd-analyze"], text=True, stderr=subprocess.DEVNULL).strip()
+        blame = subprocess.check_output(
+            ["systemd-analyze", "blame", "--no-pager"],
+            text=True, stderr=subprocess.DEVNULL
+        ).strip().splitlines()[:10]
+        return {"ok": True, "summary": out, "top_units": blame}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # API: TTS bridge — polls HA pipeline debug for TTS URL, plays on Jasper
 # ---------------------------------------------------------------------------
 
 async def _ha_ws_connect():
     """Open an authenticated HA WebSocket connection. Returns ws handle."""
     token = HA_TOKEN_PATH.read_text().strip()
-    ws = await websockets.connect(HA_WS_URL)
-    hello = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+    ws = await websockets.connect(HA_WS_URL, open_timeout=5)
+    hello = json.loads(await ws.recv())
     if hello.get("type") != "auth_required":
         await ws.close()
         raise HTTPException(503, detail="HA WS unexpected hello")
     await ws.send(json.dumps({"type": "auth", "access_token": token}))
-    auth_ok = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+    auth_ok = json.loads(await ws.recv())
     if auth_ok.get("type") != "auth_ok":
         await ws.close()
         raise HTTPException(503, detail=f"HA WS auth failed: {auth_ok.get('type')}")
@@ -486,7 +698,7 @@ async def _ha_ws_cmd(ws, msg_id: int, msg_type: str, **kwargs) -> dict:
     payload = {"id": msg_id, "type": msg_type, **kwargs}
     await ws.send(json.dumps(payload))
     while True:
-        resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
+        resp = json.loads(await ws.recv())
         if resp.get("id") == msg_id:
             return resp
 
@@ -499,71 +711,84 @@ async def api_tts_bridge():
     the URL on media_player.jasper with announce=True so MA ducks & resumes.
     """
     tts_url: Optional[str] = None
-    deadline = asyncio.get_event_loop().time() + TTS_POLL_TIMEOUT
+    logger.info("TTS bridge: invoked")
 
     try:
-        ws = await _ha_ws_connect()
-        try:
-            msg_id = 1
+        async with asyncio.timeout(TTS_POLL_TIMEOUT + 3):
+            ws = await _ha_ws_connect()
+            try:
+                msg_id = 1
 
-            # 1. Find the most recent run ID for the JasperVoice pipeline
-            latest_run_id: Optional[str] = None
-            while asyncio.get_event_loop().time() < deadline and latest_run_id is None:
-                resp = await _ha_ws_cmd(ws, msg_id,
-                                        "assist_pipeline/pipeline_debug/list",
-                                        pipeline_id=JASPER_PIPELINE_ID)
-                msg_id += 1
-                runs = resp.get("result", {}).get("pipeline_runs", [])
-                if runs:
-                    latest_run_id = runs[-1]["pipeline_run_id"]
-                else:
+                # 1. Find the most recent run ID for the JasperVoice pipeline.
+                #    HA registers runs at pipeline start, so the current run is
+                #    already in the list by the time 'responding' fires.
+                latest_run_id: Optional[str] = None
+                loop = asyncio.get_running_loop()
+                deadline = loop.time() + TTS_POLL_TIMEOUT
+                while loop.time() < deadline and latest_run_id is None:
+                    resp = await _ha_ws_cmd(ws, msg_id,
+                                            "assist_pipeline/pipeline_debug/list",
+                                            pipeline_id=JASPER_PIPELINE_ID)
+                    msg_id += 1
+                    runs = resp.get("result", {}).get("pipeline_runs", [])
+                    if runs:
+                        latest_run_id = runs[-1]["pipeline_run_id"]
+                        logger.info("TTS bridge: run %s (%d total)", latest_run_id, len(runs))
+                    else:
+                        await asyncio.sleep(TTS_POLL_INTERVAL)
+
+                if not latest_run_id:
+                    logger.error("TTS bridge: no runs found")
+                    raise HTTPException(504, detail="No pipeline runs found for JasperVoice")
+
+                # 2. Poll the run's events until tts-end appears
+                while loop.time() < deadline:
+                    resp = await _ha_ws_cmd(ws, msg_id,
+                                            "assist_pipeline/pipeline_debug/get",
+                                            pipeline_id=JASPER_PIPELINE_ID,
+                                            pipeline_run_id=latest_run_id)
+                    msg_id += 1
+                    for event in reversed(resp.get("result", {}).get("events", [])):
+                        if event.get("type") == "tts-end":
+                            out = event.get("data", {}).get("tts_output") or {}
+                            if out.get("url"):
+                                tts_url = out["url"]
+                                break
+                    if tts_url:
+                        break
                     await asyncio.sleep(TTS_POLL_INTERVAL)
 
-            if not latest_run_id:
-                raise HTTPException(504, detail="No pipeline runs found for JasperVoice")
+                if not tts_url:
+                    logger.error("TTS bridge: tts-end not found within %ss for run %s",
+                                 TTS_POLL_TIMEOUT, latest_run_id)
+                    raise HTTPException(504, detail="TTS not ready within timeout")
 
-            # 2. Poll the run's events until tts-end appears
-            while asyncio.get_event_loop().time() < deadline:
-                resp = await _ha_ws_cmd(ws, msg_id,
-                                        "assist_pipeline/pipeline_debug/get",
-                                        pipeline_id=JASPER_PIPELINE_ID,
-                                        pipeline_run_id=latest_run_id)
-                msg_id += 1
-                for event in reversed(resp.get("result", {}).get("events", [])):
-                    if event.get("type") == "tts-end":
-                        out = event.get("data", {}).get("tts_output") or {}
-                        if out.get("url"):
-                            tts_url = out["url"]
-                            break
-                if tts_url:
-                    break
-                await asyncio.sleep(TTS_POLL_INTERVAL)
+                # 3. Make URL absolute so MA/Squeezelite can fetch it
+                if tts_url.startswith("/"):
+                    tts_url = f"{HA_API_BASE}{tts_url}"
+                logger.info("TTS bridge: playing %s", tts_url)
 
-            if not tts_url:
-                raise HTTPException(504, detail="TTS not ready within timeout")
-
-            # 3. Make URL absolute so Squeezelite can fetch it from the host
-            if tts_url.startswith("/"):
-                tts_url = f"{HA_API_BASE}{tts_url}"
-
-            # 4. Play on Jasper via HA service call (announce=True: MA ducks & resumes)
-            await _ha_ws_cmd(ws, msg_id, "call_service",
-                             domain="media_player",
-                             service="play_media",
-                             target={"entity_id": JASPER_ENTITY_ID},
-                             service_data={
-                                 "media_content_id": tts_url,
-                                 "media_content_type": "music",
-                                 "announce": True,
-                             })
-        finally:
-            await ws.close()
+                # 4. Play on Jasper (announce=True: MA ducks music and resumes)
+                await _ha_ws_cmd(ws, msg_id, "call_service",
+                                 domain="media_player",
+                                 service="play_media",
+                                 target={"entity_id": JASPER_ENTITY_ID},
+                                 service_data={
+                                     "media_content_id": tts_url,
+                                     "media_content_type": "music",
+                                     "announce": True,
+                                 })
+                logger.info("TTS bridge: play_media dispatched")
+            finally:
+                await ws.close()
 
     except HTTPException:
         raise
-    except asyncio.TimeoutError:
-        raise HTTPException(504, detail="Timeout waiting for HA WebSocket")
+    except TimeoutError:
+        logger.error("TTS bridge: timed out")
+        raise HTTPException(504, detail="TTS bridge timed out")
     except Exception as e:
+        logger.error("TTS bridge: error: %s", e)
         raise HTTPException(502, detail=f"TTS bridge error: {e}")
 
     return {"ok": True, "tts_url": tts_url}

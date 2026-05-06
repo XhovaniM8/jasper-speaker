@@ -308,6 +308,59 @@
     <div class="chart-wrap"><canvas id="xo-chart"></canvas></div>
   </div>
 
+  <!-- Room EQ -->
+  <div class="row two-col" style="margin-bottom:16px">
+
+    <!-- EQ Profiles -->
+    <div class="card">
+      <div class="card-title">EQ Profiles</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <select id="eq-profile-sel" style="flex:1;min-width:120px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px">
+          <option value="">— select profile —</option>
+        </select>
+        <button class="btn btn-secondary" id="eq-profile-load" title="Load selected profile">Load</button>
+        <button class="btn btn-danger"    id="eq-profile-del"  title="Delete selected profile">Delete</button>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+        <input id="eq-profile-name" placeholder="profile name" style="flex:1;min-width:100px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:13px">
+        <button class="btn btn-primary" id="eq-profile-save">Save current</button>
+      </div>
+      <button class="btn btn-danger" id="eq-reset" style="width:100%">↺ Reset to Flat (remove all EQ)</button>
+      <div id="eq-profile-msg" style="margin-top:10px;font-size:12px;color:var(--muted);min-height:16px"></div>
+    </div>
+
+    <!-- REW Import + active filter table -->
+    <div class="card">
+      <div class="card-title">Room Correction</div>
+      <div style="margin-bottom:10px;font-size:12px;color:var(--muted)">
+        Export from REW: <em>Export → Filter Settings to File</em> (plain text, not WAV)
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+        <input type="file" id="eq-rew-file" accept=".txt,.req,.eq" style="flex:1;font-size:12px;color:var(--muted)">
+        <button class="btn btn-primary" id="eq-rew-import">Import &amp; Apply</button>
+      </div>
+      <div class="card-title">Active Filters</div>
+      <div style="overflow-x:auto">
+        <table id="eq-filter-table" style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="color:var(--muted);text-align:left;border-bottom:1px solid var(--border)">
+              <th style="padding:4px 8px 4px 0">Name</th>
+              <th style="padding:4px 8px 4px 0">Type</th>
+              <th style="padding:4px 8px 4px 0">Freq</th>
+              <th style="padding:4px 8px 4px 0">Gain</th>
+              <th style="padding:4px 8px 4px 0">Q</th>
+            </tr>
+          </thead>
+          <tbody id="eq-filter-body">
+            <tr><td colspan="5" style="color:var(--muted);padding:8px 0">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="eq-import-msg" style="margin-top:10px;font-size:12px;color:var(--muted);min-height:16px"></div>
+    </div>
+
+  </div>
+
   <!-- Test console -->
   <div class="card">
     <div class="card-title">Test Console</div>
@@ -576,6 +629,108 @@ function connectCdspWs() {
   cdspWs.onerror = () => cdspWs.close();
 }
 connectCdspWs();
+
+// ── Room EQ ───────────────────────────────────────────────────────
+async function fetchEqProfiles() {
+  try {
+    const { profiles } = await (await fetch("/api/eq/profiles")).json();
+    const sel = document.getElementById("eq-profile-sel");
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— select profile —</option>' +
+      profiles.map(p => `<option value="${p}"${p===cur?" selected":""}>${p}</option>`).join("");
+  } catch (_) {}
+}
+
+async function fetchEqFilters() {
+  try {
+    const { filters } = await (await fetch("/api/eq/filters")).json();
+    const tbody = document.getElementById("eq-filter-body");
+    if (!filters || !filters.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:8px 0">No filters</td></tr>';
+      return;
+    }
+    tbody.innerHTML = filters.map(f => {
+      const color = f.is_rew ? "var(--blue)" : "var(--muted)";
+      const gain  = f.gain != null ? `${f.gain > 0 ? "+" : ""}${f.gain.toFixed(1)} dB` : "—";
+      const q     = f.q    != null ? f.q.toFixed(2) : "—";
+      const freq  = f.freq != null ? `${f.freq} Hz` : "—";
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px 5px 0;color:${color};font-family:monospace">${f.name}</td>
+        <td style="padding:5px 8px 5px 0;color:var(--text)">${f.subtype || f.type || "—"}</td>
+        <td style="padding:5px 8px 5px 0;color:var(--text)">${freq}</td>
+        <td style="padding:5px 8px 5px 0;color:${f.gain < 0 ? "var(--red)" : f.gain > 0 ? "var(--green)" : "var(--text)"}">${gain}</td>
+        <td style="padding:5px 8px 5px 0;color:var(--text)">${q}</td>
+      </tr>`;
+    }).join("");
+  } catch (_) {}
+}
+
+function eqMsg(id, text, isErr = false) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.style.color = isErr ? "var(--red)" : "var(--green)";
+  setTimeout(() => { if (el.textContent === text) { el.textContent = ""; el.style.color = "var(--muted)"; } }, 4000);
+}
+
+document.getElementById("eq-profile-load").addEventListener("click", async () => {
+  const name = document.getElementById("eq-profile-sel").value;
+  if (!name) return eqMsg("eq-profile-msg", "Select a profile first", true);
+  try {
+    await fetch(`/api/eq/profiles/${encodeURIComponent(name)}/load`, { method: "POST" });
+    eqMsg("eq-profile-msg", `✓ Loaded '${name}'`);
+    fetchEqFilters();
+  } catch (e) { eqMsg("eq-profile-msg", "Load failed", true); }
+});
+
+document.getElementById("eq-profile-save").addEventListener("click", async () => {
+  const name = (document.getElementById("eq-profile-name").value || "").trim();
+  if (!name) return eqMsg("eq-profile-msg", "Enter a profile name", true);
+  try {
+    const r = await (await fetch(`/api/eq/profiles/${encodeURIComponent(name)}`, { method: "POST" })).json();
+    if (r.ok) { eqMsg("eq-profile-msg", `✓ Saved '${name}'`); fetchEqProfiles(); }
+    else eqMsg("eq-profile-msg", r.detail || "Save failed", true);
+  } catch (_) { eqMsg("eq-profile-msg", "Save failed", true); }
+});
+
+document.getElementById("eq-profile-del").addEventListener("click", async () => {
+  const name = document.getElementById("eq-profile-sel").value;
+  if (!name) return eqMsg("eq-profile-msg", "Select a profile first", true);
+  if (!confirm(`Delete profile '${name}'?`)) return;
+  try {
+    await fetch(`/api/eq/profiles/${encodeURIComponent(name)}`, { method: "DELETE" });
+    eqMsg("eq-profile-msg", `✓ Deleted '${name}'`);
+    fetchEqProfiles();
+  } catch (_) { eqMsg("eq-profile-msg", "Delete failed", true); }
+});
+
+document.getElementById("eq-reset").addEventListener("click", async () => {
+  if (!confirm("Remove all room correction EQ and reset to flat?")) return;
+  try {
+    const r = await (await fetch("/api/eq/reset", { method: "POST" })).json();
+    if (r.ok) { eqMsg("eq-profile-msg", "✓ Reset to flat"); fetchEqFilters(); }
+    else eqMsg("eq-profile-msg", r.detail || "Reset failed", true);
+  } catch (_) { eqMsg("eq-profile-msg", "Reset failed", true); }
+});
+
+document.getElementById("eq-rew-import").addEventListener("click", async () => {
+  const fileInput = document.getElementById("eq-rew-file");
+  const file = fileInput.files[0];
+  if (!file) return eqMsg("eq-import-msg", "Select a REW filter settings file first", true);
+  const formData = new FormData();
+  formData.append("file", file);
+  try {
+    const r = await (await fetch("/api/eq/import/rew", { method: "POST", body: formData })).json();
+    if (r.ok) {
+      eqMsg("eq-import-msg", `✓ Applied ${r.applied} filter${r.applied !== 1 ? "s" : ""}`);
+      fetchEqFilters();
+    } else {
+      eqMsg("eq-import-msg", r.detail || "Import failed", true);
+    }
+  } catch (_) { eqMsg("eq-import-msg", "Import failed", true); }
+});
+
+fetchEqProfiles();
+fetchEqFilters();
 
 // ── Test console ──────────────────────────────────────────────────
 let testSource = null;
